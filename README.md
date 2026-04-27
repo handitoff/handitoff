@@ -2,19 +2,6 @@
 
 Core application code for handitoff.io.
 
-## Layout
-
-```txt
-apps/
-  web/
-  api/
-packages/
-  config/
-  crypto/
-  protocol/
-  transfer/
-```
-
 ## Development
 
 Install dependencies:

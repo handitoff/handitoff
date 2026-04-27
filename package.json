@@ -12,7 +12,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "test": "npm run test --workspaces --if-present",
-    "format": "prettier --check .",
+    "format": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,json,md,css,yml}\"",
     "dev:web": "npm run dev -w @handitoff/web",
     "dev:api": "npm run dev -w @handitoff/api"
   },
