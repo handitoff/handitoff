@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/config" },
+    { "path": "./packages/protocol" },
+    { "path": "./packages/crypto" },
+    { "path": "./packages/transfer" },
+    { "path": "./apps/api" }
+  ]
+}
