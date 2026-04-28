@@ -16,6 +16,7 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -b --watch",
+    "start": "node dist/server.js",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run --passWithNoTests"
   }

@@ -14,7 +14,8 @@
     "test": "npm run test --workspaces --if-present",
     "format": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,json,md,css,yml}\"",
     "dev:web": "npm run dev -w @handitoff/web",
-    "dev:api": "npm run dev -w @handitoff/api"
+    "dev:api": "npm run dev -w @handitoff/api",
+    "start:api": "npm run build -w @handitoff/api && npm run start -w @handitoff/api"
   },
   "engines": {
     "node": ">=20.11.0"
