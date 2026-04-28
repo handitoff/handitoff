@@ -14,7 +14,8 @@
     "test": "npm run test --workspaces --if-present",
     "format": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,json,md,css,yml}\"",
     "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\" --names \"web,api\" --prefix-colors \"bgBlue.bold,bgGreen.bold\"",
-    "dev:web": "npm run dev -w @handitoff/web",
+    "dev:lan": "node scripts/dev-lan.mjs",
+    "dev:web": "npm run dev -w @handitoff/web -- --host 0.0.0.0",
     "dev:api": "npm run dev -w @handitoff/api",
     "start:api": "npm run build -w @handitoff/api && npm run start -w @handitoff/api"
   },

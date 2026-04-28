@@ -28,6 +28,26 @@ describe("loadPublicConfig", () => {
     expect(config.features.turnEnabled).toBe(true);
   });
 
+  it("derives local network URLs from a LAN host", () => {
+    const config = loadPublicConfig({
+      HANDITOFF_LAN_HOST: "192.168.1.50",
+    });
+
+    expect(config.appUrl).toBe("http://192.168.1.50:5173");
+    expect(config.apiUrl).toBe("http://192.168.1.50:8787");
+    expect(config.wsUrl).toBe("ws://192.168.1.50:8787/ws");
+  });
+
+  it("lets explicit URLs override LAN host defaults", () => {
+    const config = loadPublicConfig({
+      HANDITOFF_LAN_HOST: "192.168.1.50",
+      HANDITOFF_APP_URL: "http://devbox.local:5173",
+    });
+
+    expect(config.appUrl).toBe("http://devbox.local:5173");
+    expect(config.apiUrl).toBe("http://192.168.1.50:8787");
+  });
+
   it("fails loudly for invalid values", () => {
     expect(() =>
       loadPublicConfig({

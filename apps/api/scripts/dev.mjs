@@ -1,11 +1,22 @@
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+import { mergeDotEnv } from "../../../scripts/env.mjs";
 
 let server;
 let builtOnce = false;
+const rootDir = dirname(fileURLToPath(new URL("../../../package.json", import.meta.url)));
+const env = mergeDotEnv(join(rootDir, ".env"));
+const tscCommand =
+  process.platform === "win32"
+    ? ["cmd.exe", ["/d", "/s", "/c", "npx tsc -b --watch --preserveWatchOutput"]]
+    : ["npx", ["tsc", "-b", "--watch", "--preserveWatchOutput"]];
+const node = process.execPath;
 
-const tsc = spawn("npx", ["tsc", "-b", "--watch", "--preserveWatchOutput"], {
-  shell: true,
+const tsc = spawn(tscCommand[0], tscCommand[1], {
   stdio: ["ignore", "pipe", "pipe"],
+  env,
 });
 
 tsc.stdout.on("data", (chunk) => {
@@ -24,10 +35,9 @@ tsc.on("exit", (code) => {
 });
 
 function startServer() {
-  server = spawn("node", ["--watch", "dist/server.js"], {
-    shell: true,
+  server = spawn(node, ["--watch", "dist/server.js"], {
     stdio: "inherit",
-    env: process.env,
+    env,
   });
 }
 

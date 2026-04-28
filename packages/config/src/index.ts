@@ -67,10 +67,20 @@ const DEFAULT_RATE_LIMITS: ServerConfig["rateLimits"] = {
 };
 
 export function loadPublicConfig(env: ConfigEnv = process.env): PublicConfig {
+  const lanHost = emptyToUndefined(env.HANDITOFF_LAN_HOST);
+  const lanDefaults =
+    lanHost === undefined
+      ? DEFAULT_PUBLIC_CONFIG
+      : {
+          ...DEFAULT_PUBLIC_CONFIG,
+          appUrl: `http://${lanHost}:5173`,
+          apiUrl: `http://${lanHost}:8787`,
+          wsUrl: `ws://${lanHost}:8787/ws`,
+        };
   const config: PublicConfig = {
-    appUrl: readString(env, "HANDITOFF_APP_URL", DEFAULT_PUBLIC_CONFIG.appUrl),
-    apiUrl: readString(env, "HANDITOFF_API_URL", DEFAULT_PUBLIC_CONFIG.apiUrl),
-    wsUrl: readString(env, "HANDITOFF_WS_URL", DEFAULT_PUBLIC_CONFIG.wsUrl),
+    appUrl: readString(env, "HANDITOFF_APP_URL", lanDefaults.appUrl),
+    apiUrl: readString(env, "HANDITOFF_API_URL", lanDefaults.apiUrl),
+    wsUrl: readString(env, "HANDITOFF_WS_URL", lanDefaults.wsUrl),
     billing: {
       enabled: readBoolean(env, "HANDITOFF_BILLING_ENABLED", false),
     },
@@ -232,3 +242,6 @@ function emptyToUndefined(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed === "" ? undefined : trimmed;
 }
+
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";

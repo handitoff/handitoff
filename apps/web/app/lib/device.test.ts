@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { inferDeviceLabel } from "./device";
+import { getBrowserDeviceIdentity, inferDeviceLabel, resetBrowserDeviceIdentityForTests } from "./device";
+
+afterEach(() => {
+  resetBrowserDeviceIdentityForTests();
+  vi.unstubAllGlobals();
+});
 
 describe("inferDeviceLabel", () => {
   it.each([
@@ -23,3 +28,18 @@ describe("inferDeviceLabel", () => {
   });
 });
 
+describe("getBrowserDeviceIdentity", () => {
+  it("falls back when randomUUID is unavailable", () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues(bytes: Uint8Array) {
+        bytes.fill(7);
+        return bytes;
+      },
+    });
+
+    const identity = getBrowserDeviceIdentity("Mozilla/5.0 (iPhone)");
+
+    expect(identity.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(identity.label).toBe("iPhone");
+  });
+});
