@@ -4,11 +4,21 @@ import { fileURLToPath } from "node:url";
 import { loadServerConfig } from "@handitoff/config";
 
 import { createApiApp } from "./app.js";
+import { SignalingHub } from "./signaling.js";
+import { InMemorySessionStore } from "./session-store.js";
+import { handleWebSocketUpgrade } from "./websocket.js";
 
 export function createNodeServer() {
-  const handler = createApiApp({ config: loadServerConfig() });
+  const config = loadServerConfig();
+  const store = new InMemorySessionStore();
+  const hub = new SignalingHub({ config, store });
+  const handler = createApiApp({
+    config,
+    store,
+    onSessionExpired: (sessionId) => hub.expireSession(sessionId),
+  });
 
-  return createServer(async (incoming, outgoing) => {
+  const server = createServer(async (incoming, outgoing) => {
     const request = toRequest(incoming);
     const response = await handler(request);
 
@@ -16,6 +26,17 @@ export function createNodeServer() {
     response.headers.forEach((value, key) => outgoing.setHeader(key, value));
     outgoing.end(Buffer.from(await response.arrayBuffer()));
   });
+
+  server.on("upgrade", (request, socket) => {
+    if (!handleWebSocketUpgrade(hub, request, socket as import("node:net").Socket)) {
+      socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
+    }
+  });
+
+  const heartbeatSweep = setInterval(() => hub.sweepHeartbeats(), 10_000);
+  heartbeatSweep.unref();
+
+  return server;
 }
 
 function toRequest(incoming: IncomingMessage): Request {
