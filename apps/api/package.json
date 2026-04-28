@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "dev": "tsc -b --watch",
+    "dev": "node scripts/dev.mjs",
     "start": "node dist/server.js",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run --passWithNoTests"

@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @theme {
   --font-sans:
@@ -224,6 +224,34 @@ a {
   opacity: 0.45;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 24px 0;
+  font-size: 13px;
+  color: #555552;
+}
+
+.panel-actions--left {
+  justify-content: flex-start;
+  margin-top: 18px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .tile-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -447,16 +475,10 @@ a {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   EDITORIAL LANDING PAGE
-   ═══════════════════════════════════════════════════════════ */
-
 .landing {
   background: #fafaf8;
   color: #0a0a0a;
 }
-
-/* ── Hero ─────────────────────────────────────────────────── */
 
 .l-hero {
   height: 100svh;
@@ -538,8 +560,6 @@ a {
   justify-content: space-between;
 }
 
-/* ── Shared section primitives ────────────────────────────── */
-
 .el-section {
   border-top: 1px solid #e5e5e2;
   padding: 120px 32px;
@@ -586,8 +606,6 @@ a {
   font-family: Georgia, "Times New Roman", serif;
 }
 
-/* ── How it works ─────────────────────────────────────────── */
-
 .el-steps {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -624,8 +642,6 @@ a {
   line-height: 1.55;
   letter-spacing: -0.005em;
 }
-
-/* ── Why section ──────────────────────────────────────────── */
 
 .el-why-layout {
   display: grid;
@@ -697,8 +713,6 @@ a {
   letter-spacing: -0.005em;
 }
 
-/* ── Pull quote ───────────────────────────────────────────── */
-
 .el-quote-inner {
   max-width: 960px;
   margin: 0 auto;
@@ -734,8 +748,6 @@ a {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-
-/* ── Promises ─────────────────────────────────────────────── */
 
 .el-promises {
   display: grid;
@@ -775,8 +787,6 @@ a {
   letter-spacing: -0.005em;
 }
 
-/* ── FAQ ──────────────────────────────────────────────────── */
-
 .el-faq-list {
   margin-top: 64px;
 }
@@ -815,8 +825,6 @@ a {
   line-height: 1.55;
   letter-spacing: -0.005em;
 }
-
-/* ── Footer ───────────────────────────────────────────────── */
 
 .el-footer {
   background: #0a0a0a;
@@ -882,8 +890,6 @@ a {
   text-transform: uppercase;
 }
 
-/* ── Landing responsive ───────────────────────────────────── */
-
 @media (max-width: 1024px) {
   .el-section-header {
     grid-template-columns: 240px 1fr;
@@ -897,7 +903,6 @@ a {
 }
 
 @media (max-width: 860px) {
-  /* Hero stacks */
   .l-hero {
     height: auto;
     min-height: 100svh;
@@ -926,7 +931,6 @@ a {
     display: none;
   }
 
-  /* Sections */
   .el-section {
     padding: 80px 24px;
   }
@@ -1052,3 +1056,4 @@ a {
     grid-template-columns: 1fr;
   }
 }
+

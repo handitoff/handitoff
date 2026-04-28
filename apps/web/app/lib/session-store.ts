@@ -1,4 +1,13 @@
-export type ClientConnectionState = "idle" | "creating" | "waiting" | "joining" | "paired" | "ended" | "error";
+export type ClientConnectionState =
+  | "idle"
+  | "creating"
+  | "waiting"
+  | "joining"
+  | "paired"
+  | "rejected"
+  | "ended"
+  | "expired"
+  | "error";
 
 export type ClientSessionState = {
   connection: ClientConnectionState;
@@ -8,6 +17,8 @@ export type ClientSessionState = {
   deviceLabel?: string;
   peerDeviceId?: string;
   peerDeviceLabel?: string;
+  pendingPeerDeviceId?: string;
+  pendingPeerDeviceLabel?: string;
   websocket: "disconnected" | "connecting" | "connected";
   webrtc: "idle" | "negotiating" | "connected" | "failed";
   transfer: {
@@ -33,7 +44,10 @@ export type ClientSessionAction =
   | { type: "session:created"; sessionId: string; publicCode: string }
   | { type: "session:join-start"; publicCode: string; deviceId: string; deviceLabel: string }
   | { type: "session:join-requested"; sessionId: string }
+  | { type: "session:join-request-received"; sessionId: string; peerDeviceId: string; peerDeviceLabel: string }
   | { type: "session:paired"; sessionId: string; peerDeviceId: string; peerDeviceLabel: string }
+  | { type: "session:rejected"; message?: string }
+  | { type: "session:expired" }
   | { type: "session:ended" }
   | { type: "session:error"; message: string }
   | { type: "webrtc:negotiating" }
@@ -100,19 +114,59 @@ export function reduceClientSessionState(
         return state;
       }
       return { ...state, sessionId: action.sessionId };
-    case "session:paired":
-      if (state.connection !== "waiting" && state.connection !== "joining") {
+    case "session:join-request-received":
+      if (state.connection !== "waiting") {
         return state;
       }
       return {
         ...state,
-        connection: "paired",
         sessionId: action.sessionId,
-        peerDeviceId: action.peerDeviceId,
-        peerDeviceLabel: action.peerDeviceLabel,
+        pendingPeerDeviceId: action.peerDeviceId,
+        pendingPeerDeviceLabel: action.peerDeviceLabel,
       };
+    case "session:paired":
+      if (state.connection !== "waiting" && state.connection !== "joining") {
+        return state;
+      }
+      {
+        const { pendingPeerDeviceId, pendingPeerDeviceLabel, ...rest } = state;
+        void pendingPeerDeviceId;
+        void pendingPeerDeviceLabel;
+        return {
+          ...rest,
+          connection: "paired",
+          sessionId: action.sessionId,
+          peerDeviceId: action.peerDeviceId,
+          peerDeviceLabel: action.peerDeviceLabel,
+        };
+      }
+    case "session:rejected":
+      {
+        const { pendingPeerDeviceId, pendingPeerDeviceLabel, ...rest } = state;
+        void pendingPeerDeviceId;
+        void pendingPeerDeviceLabel;
+        return {
+          ...rest,
+          connection: "rejected",
+          ...(action.message === undefined ? {} : { error: action.message }),
+        };
+      }
+    case "session:expired":
+      {
+        const { pendingPeerDeviceId, pendingPeerDeviceLabel, ...rest } = state;
+        void pendingPeerDeviceId;
+        void pendingPeerDeviceLabel;
+        return {
+          ...rest,
+          connection: "expired",
+        };
+      }
     case "session:ended":
-      return { ...state, connection: "ended", webrtc: "idle" };
+      return {
+        ...state,
+        connection: "ended",
+        webrtc: "idle",
+      };
     case "session:error":
       return { ...state, connection: "error", error: action.message };
     case "webrtc:negotiating":

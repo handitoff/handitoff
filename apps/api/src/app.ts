@@ -47,34 +47,38 @@ export function createApiApp(options: ApiAppOptions = {}) {
     const startedAt = now();
 
     try {
+      if (request.method === "OPTIONS") {
+        return withCors(new Response(null, { status: 204 }), request);
+      }
+
       const expiredSessions = await store.sweepExpired(now());
       for (const session of expiredSessions) {
         options.onSessionExpired?.(session.id, session.publicCode);
       }
 
       if (request.method === "GET" && url.pathname === "/api/health") {
-        return json({ status: "ok", requestId }, { requestId });
+        return withCors(json({ status: "ok", requestId }, { requestId }), request);
       }
 
       if (request.method === "GET" && url.pathname === "/api/config") {
-        return json(publicConfig(config.publicConfig), { requestId });
+        return withCors(json(publicConfig(config.publicConfig), { requestId }), request);
       }
 
       if (request.method === "POST" && url.pathname === "/api/sessions") {
-        return createSession(request, requestId, config, store);
+        return withCors(await createSession(request, requestId, config, store), request);
       }
 
       const lookupMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && lookupMatch?.[1] !== undefined) {
-        return lookupSession(request, requestId, lookupMatch[1], config, store, rateLimiter);
+        return withCors(await lookupSession(request, requestId, lookupMatch[1], config, store, rateLimiter), request);
       }
 
       const endMatch = /^\/api\/sessions\/([^/]+)\/end$/.exec(url.pathname);
       if (request.method === "POST" && endMatch?.[1] !== undefined) {
-        return endSession(request, requestId, endMatch[1], store);
+        return withCors(await endSession(request, requestId, endMatch[1], store), request);
       }
 
-      return errorResponse("not_found", "Route not found.", 404, requestId);
+      return withCors(errorResponse("not_found", "Route not found.", 404, requestId), request);
     } finally {
       logger.info({
         at: "request",
@@ -211,6 +215,21 @@ async function readJson<T>(request: Request, requestId: string): Promise<T | Res
   } catch {
     return errorResponse("bad_json", "Request body must be valid JSON.", 400, requestId);
   }
+}
+
+function withCors(response: Response, request: Request): Response {
+  const origin = request.headers.get("origin");
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", origin ?? "*");
+  headers.set("vary", "origin");
+  headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
+  headers.set("access-control-allow-headers", "content-type,x-request-id");
+  headers.set("access-control-expose-headers", "x-request-id");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function json(body: unknown, options: { requestId: string; status?: number }): Response {

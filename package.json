@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "test": "npm run test --workspaces --if-present",
     "format": "prettier --check \"**/*.{ts,tsx,js,jsx,mjs,json,md,css,yml}\"",
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\" --names \"web,api\" --prefix-colors \"bgBlue.bold,bgGreen.bold\"",
     "dev:web": "npm run dev -w @handitoff/web",
     "dev:api": "npm run dev -w @handitoff/api",
     "start:api": "npm run build -w @handitoff/api && npm run start -w @handitoff/api"
@@ -23,10 +24,14 @@
   "devDependencies": {
     "@eslint/js": "^9.25.1",
     "@types/node": "^22.15.2",
+    "concurrently": "^8.2.0",
     "eslint": "^9.25.1",
     "prettier": "^3.5.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.31.0",
     "vitest": "^3.1.2"
+  },
+  "dependencies": {
+    "qrcode.react": "^4.2.0"
   }
 }

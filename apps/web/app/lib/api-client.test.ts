@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiClientError, HanditoffApiClient } from "./api-client";
+import { HanditoffApiClient, type ApiClientError } from "./api-client";
 
 describe("HanditoffApiClient", () => {
   it("reads public config", async () => {

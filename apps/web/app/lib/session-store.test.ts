@@ -49,5 +49,63 @@ describe("reduceClientSessionState", () => {
     expect(state.transfer.outgoing).toHaveLength(1);
     expect(state.transfer.incoming).toHaveLength(0);
   });
+
+  it("tracks host approval prompt state", () => {
+    const waiting = reduceClientSessionState(
+      reduceClientSessionState(initialClientSessionState, {
+        type: "session:create-start",
+        deviceId: "host-1",
+        deviceLabel: "MacBook",
+      }),
+      {
+        type: "session:created",
+        sessionId: "session-1",
+        publicCode: "ABC234",
+      },
+    );
+
+    const prompted = reduceClientSessionState(waiting, {
+      type: "session:join-request-received",
+      sessionId: "session-1",
+      peerDeviceId: "guest-1",
+      peerDeviceLabel: "iPhone",
+    });
+
+    expect(prompted).toMatchObject({
+      connection: "waiting",
+      pendingPeerDeviceId: "guest-1",
+      pendingPeerDeviceLabel: "iPhone",
+    });
+
+    const paired = reduceClientSessionState(prompted, {
+      type: "session:paired",
+      sessionId: "session-1",
+      peerDeviceId: "guest-1",
+      peerDeviceLabel: "iPhone",
+    });
+
+    expect(paired).toMatchObject({
+      connection: "paired",
+      peerDeviceLabel: "iPhone",
+    });
+    expect(paired.pendingPeerDeviceId).toBeUndefined();
+  });
+
+  it("tracks rejected and expired pairing states", () => {
+    const joining = reduceClientSessionState(initialClientSessionState, {
+      type: "session:join-start",
+      publicCode: "ABC234",
+      deviceId: "guest-1",
+      deviceLabel: "iPhone",
+    });
+
+    expect(reduceClientSessionState(joining, { type: "session:rejected", message: "Rejected." })).toMatchObject({
+      connection: "rejected",
+      error: "Rejected.",
+    });
+    expect(reduceClientSessionState(joining, { type: "session:expired" })).toMatchObject({
+      connection: "expired",
+    });
+  });
 });
 

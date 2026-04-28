@@ -1,5 +1,15 @@
-import { Link } from "react-router";
+﻿import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import { VisualQr } from "../components/visual-qr";
+import { HanditoffApiClient } from "../lib/api-client";
+import { getBrowserDeviceIdentity } from "../lib/device";
+import {
+  initialClientSessionState,
+  reduceClientSessionState,
+  type ClientSessionState,
+} from "../lib/session-store";
+import { loadPublicRuntimeConfig } from "../lib/runtime-config";
+import { HanditoffWebSocketClient } from "../lib/websocket-client";
 
 export function meta() {
   return [
@@ -27,6 +37,189 @@ export default function Home() {
 }
 
 function LHero() {
+  const navigate = useNavigate();
+  const [restartKey, setRestartKey] = useState(0);
+  const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
+  const [joinUrl, setJoinUrl] = useState("");
+  const [expiresAt, setExpiresAt] = useState<number | undefined>();
+  const [copied, setCopied] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const socketRef = useRef<HanditoffWebSocketClient | undefined>(undefined);
+  const stateRef = useRef<ClientSessionState>(state);
+
+  stateRef.current = state;
+
+  useEffect(() => {
+    if (expiresAt === undefined) {
+      setRemainingSeconds(0);
+      return;
+    }
+
+    const update = () => setRemainingSeconds(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, [expiresAt]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const identity = getBrowserDeviceIdentity();
+    const initialConfig = loadPublicRuntimeConfig();
+    const api = new HanditoffApiClient({ baseUrl: initialConfig.apiUrl });
+
+    dispatch({ type: "session:create-start", deviceId: identity.id, deviceLabel: identity.label });
+    dispatch({ type: "socket:connecting" });
+    setJoinUrl("");
+    setExpiresAt(undefined);
+    setCopied(false);
+
+    void api
+      .getConfig({ signal: controller.signal })
+      .catch(() => initialConfig)
+      .then((config) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const socket = new HanditoffWebSocketClient(config.wsUrl);
+        socketRef.current = socket;
+
+        socket.onStatus((status) => {
+          dispatch(status === "connected" ? { type: "socket:connected" } : { type: "socket:disconnected" });
+          if (status === "connected") {
+            socket.send({ type: "session:create", deviceId: identity.id, deviceLabel: identity.label });
+          }
+        });
+
+        socket.onMessage((message) => {
+          if (message.type === "session:created") {
+            dispatch({ type: "session:created", sessionId: message.sessionId, publicCode: message.publicCode });
+            setJoinUrl(message.joinUrl);
+            setExpiresAt(message.expiresAt);
+            return;
+          }
+
+          if (message.type === "session:join-request") {
+            dispatch({
+              type: "session:join-request-received",
+              sessionId: message.sessionId,
+              peerDeviceId: message.peerDeviceId,
+              peerDeviceLabel: message.peerDeviceLabel,
+            });
+            return;
+          }
+
+          if (message.type === "peer:connected") {
+            const current = stateRef.current;
+            const peerLabel = current.pendingPeerDeviceLabel ?? "Paired device";
+            dispatch({
+              type: "session:paired",
+              sessionId: current.sessionId ?? "",
+              peerDeviceId: message.peerDeviceId,
+              peerDeviceLabel: peerLabel,
+            });
+            window.sessionStorage.setItem("handitoff.connectedPeerLabel", peerLabel);
+            window.sessionStorage.setItem("handitoff.connectedCode", current.publicCode ?? "");
+            navigate(`/s/${current.publicCode ?? ""}`);
+            return;
+          }
+
+          if (message.type === "session:expired") {
+            dispatch({ type: "session:expired" });
+            return;
+          }
+
+          if (message.type === "session:ended") {
+            dispatch({ type: "session:ended" });
+            return;
+          }
+
+          if (message.type === "error") {
+            dispatch({ type: "session:error", message: message.message });
+          }
+        });
+
+        socket.connect();
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          dispatch({
+            type: "session:error",
+            message: error instanceof Error ? error.message : "Could not create a session.",
+          });
+        }
+      });
+
+    return () => {
+      controller.abort();
+      socketRef.current?.close();
+      socketRef.current = undefined;
+    };
+  }, [navigate, restartKey]);
+
+  const countdown = useMemo(() => {
+    if (remainingSeconds <= 0) {
+      return "Expired";
+    }
+    const minutes = Math.floor(remainingSeconds / 60);
+    const seconds = remainingSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }, [remainingSeconds]);
+
+  const approvePeer = () => {
+    if (state.sessionId === undefined || state.deviceId === undefined || state.pendingPeerDeviceId === undefined) {
+      return;
+    }
+    socketRef.current?.send({
+      type: "session:approve-peer",
+      sessionId: state.sessionId,
+      deviceId: state.deviceId,
+      peerDeviceId: state.pendingPeerDeviceId,
+    });
+  };
+
+  const rejectPeer = () => {
+    if (state.sessionId === undefined || state.deviceId === undefined || state.pendingPeerDeviceId === undefined) {
+      return;
+    }
+    socketRef.current?.send({
+      type: "session:reject-peer",
+      sessionId: state.sessionId,
+      deviceId: state.deviceId,
+      peerDeviceId: state.pendingPeerDeviceId,
+    });
+  };
+
+  const refreshSession = () => {
+    if (state.sessionId !== undefined && state.deviceId !== undefined) {
+      socketRef.current?.send({ type: "session:end", sessionId: state.sessionId, deviceId: state.deviceId });
+    }
+    socketRef.current?.close();
+    setRestartKey((key) => key + 1);
+  };
+
+  const copyLink = () => {
+    if (joinUrl === "") {
+      return;
+    }
+    void navigator.clipboard.writeText(joinUrl).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    });
+  };
+
+  const hostStatus =
+    state.connection === "error"
+      ? state.error ?? "Could not create session"
+      : state.pendingPeerDeviceLabel !== undefined
+        ? `${state.pendingPeerDeviceLabel} wants to pair.`
+        : state.connection === "creating"
+          ? "Creating session"
+          : state.connection === "expired"
+            ? "Session expired"
+            : "Awaiting handshake";
+  const displayJoinUrl = joinUrl === "" ? "Creating link..." : joinUrl.replace(/^https?:\/\//, "");
+
   return (
     <section className="l-hero" aria-label="Hero">
       <Link to="/" className="l-chrome-wm" aria-label="handitoff.io home">
@@ -38,7 +231,7 @@ function LHero() {
         <span className="wordmark-text">handitoff.io</span>
       </Link>
       <div className="l-chrome-status" aria-hidden="true">
-        Awaiting handshake
+        {hostStatus}
       </div>
       <div className="l-chrome-bottom" aria-hidden="true">
         <span>handitoff.io · 2026</span>
@@ -58,6 +251,10 @@ function LHero() {
             next ten minutes — files move directly between your devices and
             nowhere else.
           </p>
+          <div className="drop-strip" aria-label="File drop area">
+            <span>Drop files after pairing</span>
+            <span>{state.publicCode ?? "Waiting"}</span>
+          </div>
         </div>
         <div className="l-hero-rule" aria-hidden="true" />
         <aside className="l-qr-panel" aria-label="Scan to join">
@@ -66,11 +263,38 @@ function LHero() {
             <span>01</span>
           </div>
           <div className="qr-stage">
-            <VisualQr size={300} />
+            {joinUrl === "" ? (
+              <div className="status-line" role="status">
+                <span className="spinner" aria-hidden="true" />
+                <span>{state.connection === "error" ? state.error : "Creating session"}</span>
+              </div>
+            ) : (
+              <VisualQr size={300} value={joinUrl} />
+            )}
           </div>
+          {state.pendingPeerDeviceLabel !== undefined ? (
+            <div className="panel-actions" role="group" aria-label="Pairing request">
+              <span>{state.pendingPeerDeviceLabel} wants to pair.</span>
+              <button className="button" type="button" onClick={approvePeer}>
+                Allow
+              </button>
+              <button className="button secondary" type="button" onClick={rejectPeer}>
+                Reject
+              </button>
+            </div>
+          ) : (
+            <div className="panel-actions" role="group" aria-label="Session controls">
+              <button className="button" type="button" onClick={copyLink} disabled={joinUrl === ""}>
+                {copied ? "Copied" : "Copy link"}
+              </button>
+              <button className="button secondary" type="button" onClick={refreshSession}>
+                Refresh session
+              </button>
+            </div>
+          )}
           <div className="panel-foot">
-            <span>handitoff.io/join/k7r</span>
-            <span>○</span>
+            <span aria-label={`Join link ${displayJoinUrl}`}>{displayJoinUrl}</span>
+            <span>{countdown}</span>
           </div>
         </aside>
       </div>
@@ -343,7 +567,7 @@ function LFooter() {
               <ul className="el-footer-links">
                 {col.links.map((lk) => (
                   <li key={lk.label}>
-                    {lk.internal ? (
+                    {"internal" in lk && lk.internal ? (
                       <Link to={lk.href}>{lk.label}</Link>
                     ) : (
                       <a href={lk.href}>{lk.label}</a>
@@ -362,3 +586,4 @@ function LFooter() {
     </footer>
   );
 }
+

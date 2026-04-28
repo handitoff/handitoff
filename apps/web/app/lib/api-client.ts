@@ -27,7 +27,7 @@ export class HanditoffApiClient {
 
   public constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.fetchImpl = options.fetch ?? fetch;
+    this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
   public getConfig(options: { signal?: AbortSignal } = {}): Promise<PublicConfig> {
@@ -72,7 +72,7 @@ export class HanditoffApiClient {
     if (!response.ok) {
       const candidate =
         typeof body === "object" && body !== null && "error" in body ? (body as { error: unknown }).error : body;
-      const error = normalizeProtocolError(candidate);
+      const error = normalizeApiError(candidate);
       throw new ApiClientError(error.code, error.message, response.status);
     }
 
@@ -80,3 +80,20 @@ export class HanditoffApiClient {
   }
 }
 
+function normalizeApiError(error: unknown): ReturnType<typeof normalizeProtocolError> {
+  if (typeof error !== "object" || error === null || !("code" in error) || typeof error.code !== "string") {
+    return normalizeProtocolError(error);
+  }
+
+  const message = "message" in error && typeof error.message === "string" ? error.message : "Request failed.";
+  switch (error.code) {
+    case "not_found":
+      return { code: "session_not_found", message };
+    case "forbidden":
+      return { code: "not_authorized", message };
+    case "invalid_device":
+      return { code: "invalid_device_id", message };
+    default:
+      return normalizeProtocolError(error);
+  }
+}
