@@ -24,5 +24,3 @@ Start the core API locally:
 ```bash
 npm run start:api
 ```
-
-The API listens on `PORT` or `8787` by default. `GET /api/health` returns the health payload.
