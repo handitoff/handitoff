@@ -50,6 +50,24 @@ describe("reduceClientSessionState", () => {
     expect(state.transfer.incoming).toHaveLength(0);
   });
 
+  it("tracks secure transfer readiness separately from WebRTC connectivity", () => {
+    const paired = reduceClientSessionState(
+      {
+        ...initialClientSessionState,
+        connection: "paired",
+      },
+      { type: "webrtc:connected" },
+    );
+    const channelOpen = reduceClientSessionState(paired, { type: "data-channel:open" });
+    const exchanging = reduceClientSessionState(channelOpen, { type: "crypto:exchanging" });
+    const ready = reduceClientSessionState(exchanging, { type: "crypto:ready" });
+
+    expect(channelOpen).toMatchObject({ webrtc: "connected", dataChannel: "open", crypto: "idle" });
+    expect(exchanging.crypto).toBe("exchanging");
+    expect(ready.crypto).toBe("ready");
+    expect(reduceClientSessionState(ready, { type: "data-channel:closed" }).crypto).toBe("idle");
+  });
+
   it("tracks host approval prompt state", () => {
     const waiting = reduceClientSessionState(
       reduceClientSessionState(initialClientSessionState, {
@@ -99,7 +117,9 @@ describe("reduceClientSessionState", () => {
       deviceLabel: "iPhone",
     });
 
-    expect(reduceClientSessionState(joining, { type: "session:rejected", message: "Rejected." })).toMatchObject({
+    expect(
+      reduceClientSessionState(joining, { type: "session:rejected", message: "Rejected." }),
+    ).toMatchObject({
       connection: "rejected",
       error: "Rejected.",
     });
@@ -108,4 +128,3 @@ describe("reduceClientSessionState", () => {
     });
   });
 });
-

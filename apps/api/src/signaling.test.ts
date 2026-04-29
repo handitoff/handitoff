@@ -251,6 +251,28 @@ describe("signaling hub", () => {
       candidate: { candidate: "candidate" },
     });
 
+    host.receiveJson({
+      type: "crypto:public-key",
+      sessionId: "session-1",
+      fromDeviceId: "host-1",
+      publicKey: { kty: "EC", crv: "P-256", x: "x", y: "y" },
+    });
+    await flush();
+    expect(last(guest)).toEqual({
+      type: "crypto:public-key",
+      fromDeviceId: "host-1",
+      publicKey: { kty: "EC", crv: "P-256", x: "x", y: "y" },
+    });
+
+    guest.receiveJson({
+      type: "crypto:public-key",
+      sessionId: "session-1",
+      fromDeviceId: "guest-1",
+      publicKey: { kty: "EC", crv: "P-384", x: "x", y: "y" },
+    });
+    await flush();
+    expect(last(guest)).toMatchObject({ type: "error", code: "crypto_failed" });
+
     const stranger = new FakeSocket("stranger");
     hub.addSocket(stranger);
     stranger.receiveJson({ type: "session:create", deviceId: "stranger" });

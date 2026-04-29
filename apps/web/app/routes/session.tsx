@@ -1,4 +1,11 @@
 import type { Route } from "./+types/session";
+import {
+  deriveAesGcmKey,
+  exportEcdhPublicKey,
+  generateEcdhKeyPair,
+  importEcdhPublicKey,
+  type EcdhKeyPair,
+} from "@handitoff/crypto";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppShell } from "../components/app-shell";
@@ -30,6 +37,9 @@ export default function Session({ params }: Route.ComponentProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<HanditoffWebSocketClient | undefined>(undefined);
   const peerRef = useRef<WebRtcPeer | undefined>(undefined);
+  const keyPairRef = useRef<EcdhKeyPair | undefined>(undefined);
+  const aesKeyRef = useRef<CryptoKey | undefined>(undefined);
+  const pendingPeerPublicKeyRef = useRef<JsonWebKey | undefined>(undefined);
   const stateRef = useRef<ClientSessionState>(initialClientSessionState);
   const configRef = useRef(loadPublicRuntimeConfig());
   const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
@@ -43,11 +53,62 @@ export default function Session({ params }: Route.ComponentProps) {
   const teardownPeer = useCallback(() => {
     peerRef.current?.close();
     peerRef.current = undefined;
+    keyPairRef.current = undefined;
+    aesKeyRef.current = undefined;
+    pendingPeerPublicKeyRef.current = undefined;
   }, []);
 
   const sendSignal = useCallback((message: Parameters<HanditoffWebSocketClient["send"]>[0]) => {
     socketRef.current?.send(message);
   }, []);
+
+  const sendLocalPublicKey = useCallback(
+    async (keyPair: EcdhKeyPair) => {
+      const current = stateRef.current;
+      if (current.sessionId === undefined || current.deviceId === undefined) {
+        return;
+      }
+
+      sendSignal({
+        type: "crypto:public-key",
+        sessionId: current.sessionId,
+        fromDeviceId: current.deviceId,
+        publicKey: await exportEcdhPublicKey(keyPair.publicKey),
+      });
+    },
+    [sendSignal],
+  );
+
+  const completeCryptoExchange = useCallback(async (peerPublicKey: JsonWebKey) => {
+    const keyPair = keyPairRef.current;
+    if (keyPair === undefined) {
+      pendingPeerPublicKeyRef.current = peerPublicKey;
+      return;
+    }
+
+    const importedPeerPublicKey = await importEcdhPublicKey(peerPublicKey);
+    aesKeyRef.current = await deriveAesGcmKey(keyPair.privateKey, importedPeerPublicKey);
+    pendingPeerPublicKeyRef.current = undefined;
+    dispatch({ type: "crypto:ready" });
+    setLastDataChannelMessage("Secure");
+  }, []);
+
+  const startCryptoExchange = useCallback(async () => {
+    keyPairRef.current = undefined;
+    aesKeyRef.current = undefined;
+    pendingPeerPublicKeyRef.current = undefined;
+    dispatch({ type: "crypto:generating" });
+
+    const keyPair = await generateEcdhKeyPair();
+    keyPairRef.current = keyPair;
+    dispatch({ type: "crypto:exchanging" });
+    await sendLocalPublicKey(keyPair);
+
+    const pendingPeerPublicKey = pendingPeerPublicKeyRef.current;
+    if (pendingPeerPublicKey !== undefined) {
+      await completeCryptoExchange(pendingPeerPublicKey);
+    }
+  }, [completeCryptoExchange, sendLocalPublicKey]);
 
   const handlePeerEvent = useCallback(
     (event: WebRtcPeerEvent) => {
@@ -87,7 +148,7 @@ export default function Session({ params }: Route.ComponentProps) {
       }
       if (event.type === "data-channel-open") {
         dispatch({ type: "data-channel:open" });
-        setLastDataChannelMessage("Ready");
+        setLastDataChannelMessage("Securing");
         peerRef.current?.sendJson({ type: "connection:ping", sentAt: Date.now() });
         return;
       }
@@ -132,8 +193,14 @@ export default function Session({ params }: Route.ComponentProps) {
         iceServers: configRef.current.iceServers,
         onEvent: handlePeerEvent,
       });
+      void startCryptoExchange().catch((error: unknown) => {
+        dispatch({
+          type: "crypto:failed",
+          message: error instanceof Error ? error.message : "Could not start secure transfer.",
+        });
+      });
     },
-    [handlePeerEvent, teardownPeer],
+    [handlePeerEvent, startCryptoExchange, teardownPeer],
   );
 
   useEffect(() => {
@@ -221,6 +288,16 @@ export default function Session({ params }: Route.ComponentProps) {
             });
             return;
           }
+          if (message.type === "crypto:public-key") {
+            void completeCryptoExchange(message.publicKey).catch((error: unknown) => {
+              dispatch({
+                type: "crypto:failed",
+                message:
+                  error instanceof Error ? error.message : "Could not finish secure transfer.",
+              });
+            });
+            return;
+          }
           if (message.type === "peer:disconnected") {
             if (stateRef.current.dataChannel !== "open") {
               return;
@@ -283,11 +360,14 @@ export default function Session({ params }: Route.ComponentProps) {
   };
 
   const connectionLabel =
-    state.webrtc === "connected" && state.dataChannel === "open"
-      ? "Direct channel open"
-      : state.webrtc === "failed" || state.dataChannel === "failed"
-        ? "Direct channel not ready"
-        : "Opening direct channel";
+    state.webrtc === "connected" && state.dataChannel === "open" && state.crypto === "ready"
+      ? "Secure transfer ready"
+      : state.webrtc === "connected" && state.dataChannel === "open"
+        ? "Securing transfer"
+        : state.webrtc === "failed" || state.dataChannel === "failed"
+          ? "Direct channel not ready"
+          : "Opening direct channel";
+  const canSendFiles = state.dataChannel === "open" && state.crypto === "ready";
   const peerLabel = state.peerDeviceLabel ?? "Paired device";
   const retryHint = isLocalDevelopment()
     ? "The local browser channel did not finish opening. Retry restarts the browser connection without creating a new pairing code."
@@ -339,16 +419,18 @@ export default function Session({ params }: Route.ComponentProps) {
               className="visually-hidden"
               onChange={(event) => readFiles(event.target.files)}
               aria-label="Choose files to send"
+              disabled={!canSendFiles}
             />
-            <button
-              className="button"
-              type="button"
-              onClick={chooseFiles}
-              disabled={state.dataChannel !== "open"}
-            >
-              {state.dataChannel === "open" ? "Choose files" : "Waiting for channel"}
+            <button className="button" type="button" onClick={chooseFiles} disabled={!canSendFiles}>
+              {canSendFiles
+                ? "Choose files"
+                : state.dataChannel === "open"
+                  ? "Securing transfer"
+                  : "Waiting for channel"}
             </button>
-            {state.webrtc === "failed" || state.dataChannel === "failed" ? (
+            {state.webrtc === "failed" ||
+            state.dataChannel === "failed" ||
+            state.crypto === "failed" ? (
               <button className="button secondary" type="button" onClick={retryConnection}>
                 Retry
               </button>
@@ -367,7 +449,7 @@ export default function Session({ params }: Route.ComponentProps) {
           <div className="device-paired">
             <div className="phone-outline" aria-hidden="true">
               <div className="phone-speaker" />
-              <span>{state.dataChannel === "open" ? "OK" : "..."}</span>
+              <span>{canSendFiles ? "OK" : "..."}</span>
             </div>
             <div>
               <h2>{peerLabel}</h2>
@@ -378,7 +460,9 @@ export default function Session({ params }: Route.ComponentProps) {
             <div className="progress-row">
               <div
                 className="progress-fill"
-                style={{ width: state.dataChannel === "open" ? "100%" : "35%" }}
+                style={{
+                  width: canSendFiles ? "100%" : state.dataChannel === "open" ? "70%" : "35%",
+                }}
               />
               <span>01 Outbound</span>
               <span>{chosenFiles.length === 0 ? "Empty" : `${chosenFiles.length} ready`}</span>
@@ -386,7 +470,7 @@ export default function Session({ params }: Route.ComponentProps) {
             <div className="progress-row">
               <div
                 className="progress-fill"
-                style={{ width: state.dataChannel === "open" ? "100%" : "0%" }}
+                style={{ width: state.crypto === "ready" ? "100%" : "0%" }}
               />
               <span>02 Inbound</span>
               <span>{lastDataChannelMessage}</span>
@@ -396,7 +480,7 @@ export default function Session({ params }: Route.ComponentProps) {
             <span>
               {state.websocket === "connected" ? "Signaling connected" : "Signaling offline"}
             </span>
-            <span>{state.dataChannel}</span>
+            <span>{state.crypto === "ready" ? "secure" : state.dataChannel}</span>
           </div>
         </aside>
       </main>

@@ -23,6 +23,7 @@ export type ClientSessionState = {
   websocket: "disconnected" | "connecting" | "connected";
   webrtc: "idle" | "negotiating" | "connected" | "failed";
   dataChannel: "idle" | "connecting" | "open" | "closed" | "failed";
+  crypto: "idle" | "generating" | "exchanging" | "ready" | "failed";
   transfer: {
     outgoing: TransferItem[];
     incoming: TransferItem[];
@@ -80,6 +81,10 @@ export type ClientSessionAction =
   | { type: "data-channel:open" }
   | { type: "data-channel:closed" }
   | { type: "data-channel:failed"; message: string }
+  | { type: "crypto:generating" }
+  | { type: "crypto:exchanging" }
+  | { type: "crypto:ready" }
+  | { type: "crypto:failed"; message: string }
   | { type: "transfer:upsert"; item: TransferItem }
   | { type: "transfer:clear" };
 
@@ -88,6 +93,7 @@ export const initialClientSessionState: ClientSessionState = {
   websocket: "disconnected",
   webrtc: "idle",
   dataChannel: "idle",
+  crypto: "idle",
   transfer: {
     outgoing: [],
     incoming: [],
@@ -207,6 +213,7 @@ export function reduceClientSessionState(
         connection: "ended",
         webrtc: "idle",
         dataChannel: "idle",
+        crypto: "idle",
       };
     case "session:error":
       return { ...state, connection: "error", error: action.message };
@@ -215,15 +222,23 @@ export function reduceClientSessionState(
     case "webrtc:connected":
       return state.connection === "paired" ? { ...state, webrtc: "connected" } : state;
     case "webrtc:failed":
-      return { ...state, webrtc: "failed", error: action.message };
+      return { ...state, webrtc: "failed", crypto: "idle", error: action.message };
     case "data-channel:connecting":
       return state.connection === "paired" ? { ...state, dataChannel: "connecting" } : state;
     case "data-channel:open":
       return state.connection === "paired" ? { ...state, dataChannel: "open" } : state;
     case "data-channel:closed":
-      return { ...state, dataChannel: "closed" };
+      return { ...state, dataChannel: "closed", crypto: "idle" };
     case "data-channel:failed":
-      return { ...state, dataChannel: "failed", error: action.message };
+      return { ...state, dataChannel: "failed", crypto: "idle", error: action.message };
+    case "crypto:generating":
+      return state.connection === "paired" ? { ...state, crypto: "generating" } : state;
+    case "crypto:exchanging":
+      return state.connection === "paired" ? { ...state, crypto: "exchanging" } : state;
+    case "crypto:ready":
+      return state.connection === "paired" ? { ...state, crypto: "ready" } : state;
+    case "crypto:failed":
+      return { ...state, crypto: "failed", error: action.message };
     case "transfer:upsert":
       return {
         ...state,

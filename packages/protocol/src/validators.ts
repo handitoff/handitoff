@@ -291,7 +291,14 @@ function requireFields<T>(
 }
 
 function isJsonWebKey(value: unknown): value is JsonWebKey {
-  return isRecord(value) && isString(value.kty);
+  return (
+    isRecord(value) &&
+    value.kty === "EC" &&
+    value.crv === "P-256" &&
+    isNonEmptyString(value.x) &&
+    isNonEmptyString(value.y) &&
+    value.d === undefined
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

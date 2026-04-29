@@ -85,6 +85,26 @@ describe("validateClientMessage", () => {
   it("rejects unsupported client message types", () => {
     expect(validateClientMessage({ type: "unknown" }).ok).toBe(false);
   });
+
+  it("rejects malformed or private crypto public keys", () => {
+    expect(
+      validateClientMessage({
+        type: "crypto:public-key",
+        sessionId: "session-1",
+        fromDeviceId: "guest-1",
+        publicKey: { kty: "EC", crv: "P-384", x: "x", y: "y" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "crypto_failed", field: "publicKey" } });
+
+    expect(
+      validateClientMessage({
+        type: "crypto:public-key",
+        sessionId: "session-1",
+        fromDeviceId: "guest-1",
+        publicKey: { kty: "EC", crv: "P-256", x: "x", y: "y", d: "private" },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "crypto_failed", field: "publicKey" } });
+  });
 });
 
 describe("validateServerMessage", () => {
