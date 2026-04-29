@@ -3,7 +3,12 @@ import { loadServerConfig } from "@handitoff/config";
 import { isPublicCode } from "@handitoff/protocol";
 
 import { FixedWindowRateLimiter } from "./rate-limits.js";
-import { InMemorySessionStore, toPublicSession, type CreateSessionInput, type SessionStore } from "./session-store.js";
+import {
+  InMemorySessionStore,
+  toPublicSession,
+  type CreateSessionInput,
+  type SessionStore,
+} from "./session-store.js";
 
 export type ApiAppOptions = {
   config?: ServerConfig;
@@ -70,7 +75,10 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
       const lookupMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && lookupMatch?.[1] !== undefined) {
-        return withCors(await lookupSession(request, requestId, lookupMatch[1], config, store, rateLimiter), request);
+        return withCors(
+          await lookupSession(request, requestId, lookupMatch[1], config, store, rateLimiter),
+          request,
+        );
       }
 
       const endMatch = /^\/api\/sessions\/([^/]+)\/end$/.exec(url.pathname);
@@ -103,13 +111,23 @@ async function createSession(
   }
 
   if (!isDeviceId(body.hostDeviceId)) {
-    return errorResponse("invalid_device", "hostDeviceId must be a non-empty string up to 128 characters.", 400, requestId);
+    return errorResponse(
+      "invalid_device",
+      "hostDeviceId must be a non-empty string up to 128 characters.",
+      400,
+      requestId,
+    );
   }
 
   const ipKey = getIpKey(request);
   const activeSessions = await store.countActiveByIp(ipKey);
   if (activeSessions >= config.rateLimits.maxActiveSessionsPerIp) {
-    return errorResponse("rate_limited", "Too many active sessions for this IP address.", 429, requestId);
+    return errorResponse(
+      "rate_limited",
+      "Too many active sessions for this IP address.",
+      429,
+      requestId,
+    );
   }
 
   const hostUserAgent = trimToLength(request.headers.get("user-agent") ?? undefined, 256);
@@ -152,9 +170,15 @@ async function lookupSession(
     60_000,
   );
   if (!limit.allowed) {
-    return errorResponse("rate_limited", "Too many join attempts for this public code.", 429, requestId, {
-      resetAt: limit.resetAt,
-    });
+    return errorResponse(
+      "rate_limited",
+      "Too many join attempts for this public code.",
+      429,
+      requestId,
+      {
+        resetAt: limit.resetAt,
+      },
+    );
   }
 
   const session = await store.getByPublicCode(publicCode, { includeExpired: true });
@@ -182,7 +206,12 @@ async function endSession(
     return body;
   }
   if (!isDeviceId(body.deviceId)) {
-    return errorResponse("invalid_device", "deviceId must be a non-empty string up to 128 characters.", 400, requestId);
+    return errorResponse(
+      "invalid_device",
+      "deviceId must be a non-empty string up to 128 characters.",
+      400,
+      requestId,
+    );
   }
 
   const existing = await store.getById(sessionId, { includeExpired: true });

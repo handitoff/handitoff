@@ -8,7 +8,11 @@ import type { SignalingHub, SignalingSocket } from "./signaling.js";
 
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-export function handleWebSocketUpgrade(hub: SignalingHub, request: IncomingMessage, socket: Socket): boolean {
+export function handleWebSocketUpgrade(
+  hub: SignalingHub,
+  request: IncomingMessage,
+  socket: Socket,
+): boolean {
   if (request.url !== "/ws") {
     return false;
   }
@@ -85,7 +89,7 @@ class NodeWebSocketConnection implements SignalingSocket {
         return;
       }
       if (frame.opcode === 0x9) {
-        this.socket.write(encodeFrame(0xA, frame.payload));
+        this.socket.write(encodeFrame(0xa, frame.payload));
         continue;
       }
       if (frame.opcode === 0x1) {

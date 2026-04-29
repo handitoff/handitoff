@@ -29,7 +29,9 @@ describe("HanditoffWebSocketClient", () => {
       JSON.stringify({ type: "presence:ping", sessionId: "session-1", deviceId: "device-1" }),
     ]);
 
-    expect(() => client.send({ type: "session:create" } as ClientMessage)).toThrow("deviceId is required.");
+    expect(() => client.send({ type: "session:create" } as ClientMessage)).toThrow(
+      "deviceId is required.",
+    );
   });
 
   it("surfaces disconnected state on close", () => {

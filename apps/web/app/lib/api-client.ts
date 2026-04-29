@@ -46,7 +46,10 @@ export class HanditoffApiClient {
     });
   }
 
-  public getSession(publicCode: string, options: { signal?: AbortSignal } = {}): Promise<PublicSession> {
+  public getSession(
+    publicCode: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<PublicSession> {
     return this.request<PublicSession>(`/api/sessions/${encodeURIComponent(publicCode)}`, {
       signal: options.signal,
     });
@@ -71,7 +74,9 @@ export class HanditoffApiClient {
 
     if (!response.ok) {
       const candidate =
-        typeof body === "object" && body !== null && "error" in body ? (body as { error: unknown }).error : body;
+        typeof body === "object" && body !== null && "error" in body
+          ? (body as { error: unknown }).error
+          : body;
       const error = normalizeApiError(candidate);
       throw new ApiClientError(error.code, error.message, response.status);
     }
@@ -81,11 +86,17 @@ export class HanditoffApiClient {
 }
 
 function normalizeApiError(error: unknown): ReturnType<typeof normalizeProtocolError> {
-  if (typeof error !== "object" || error === null || !("code" in error) || typeof error.code !== "string") {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("code" in error) ||
+    typeof error.code !== "string"
+  ) {
     return normalizeProtocolError(error);
   }
 
-  const message = "message" in error && typeof error.message === "string" ? error.message : "Request failed.";
+  const message =
+    "message" in error && typeof error.message === "string" ? error.message : "Request failed.";
   switch (error.code) {
     case "not_found":
       return { code: "session_not_found", message };

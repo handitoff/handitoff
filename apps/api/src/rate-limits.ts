@@ -20,7 +20,10 @@ export class FixedWindowRateLimiter {
   public hit(key: string, limit: number, windowMs: number): RateLimitResult {
     const now = this.now();
     const current = this.buckets.get(key);
-    const bucket = current === undefined || current.resetAt <= now ? { count: 0, resetAt: now + windowMs } : current;
+    const bucket =
+      current === undefined || current.resetAt <= now
+        ? { count: 0, resetAt: now + windowMs }
+        : current;
 
     bucket.count += 1;
     this.buckets.set(key, bucket);
@@ -36,4 +39,3 @@ export class FixedWindowRateLimiter {
     this.buckets.delete(key);
   }
 }
-

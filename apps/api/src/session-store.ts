@@ -1,4 +1,9 @@
-import { generatePublicCode, type Device, type Session, type SessionStatus } from "@handitoff/protocol";
+import {
+  generatePublicCode,
+  type Device,
+  type Session,
+  type SessionStatus,
+} from "@handitoff/protocol";
 
 export type SessionDecision = "approved" | "rejected";
 
@@ -35,13 +40,27 @@ export type AttachGuestInput = {
 
 export type SessionStore = {
   create(input: CreateSessionInput): Promise<StoredSession>;
-  getByPublicCode(publicCode: string, options?: { includeExpired?: boolean }): Promise<StoredSession | undefined>;
-  getById(sessionId: string, options?: { includeExpired?: boolean }): Promise<StoredSession | undefined>;
-  updateStatus(sessionId: string, status: SessionStatus, ttlSeconds?: number): Promise<StoredSession | undefined>;
+  getByPublicCode(
+    publicCode: string,
+    options?: { includeExpired?: boolean },
+  ): Promise<StoredSession | undefined>;
+  getById(
+    sessionId: string,
+    options?: { includeExpired?: boolean },
+  ): Promise<StoredSession | undefined>;
+  updateStatus(
+    sessionId: string,
+    status: SessionStatus,
+    ttlSeconds?: number,
+  ): Promise<StoredSession | undefined>;
   attachGuest(input: AttachGuestInput): Promise<StoredSession | undefined>;
   recordApproval(sessionId: string, deviceId: string): Promise<StoredSession | undefined>;
   recordRejection(sessionId: string, deviceId: string): Promise<StoredSession | undefined>;
-  heartbeat(sessionId: string, deviceId: string, ttlSeconds?: number): Promise<StoredSession | undefined>;
+  heartbeat(
+    sessionId: string,
+    deviceId: string,
+    ttlSeconds?: number,
+  ): Promise<StoredSession | undefined>;
   expire(sessionId: string): Promise<StoredSession | undefined>;
   end(sessionId: string, deviceId: string, reason?: string): Promise<StoredSession | undefined>;
   countActiveByIp(ipKey: string): Promise<number>;
@@ -57,7 +76,9 @@ export class InMemorySessionStore implements SessionStore {
   private readonly idGenerator: () => string;
   private readonly now: () => number;
 
-  public constructor(options: { codeGenerator?: CodeGenerator; idGenerator?: () => string; now?: () => number } = {}) {
+  public constructor(
+    options: { codeGenerator?: CodeGenerator; idGenerator?: () => string; now?: () => number } = {},
+  ) {
     this.codeGenerator = options.codeGenerator ?? generatePublicCode;
     this.idGenerator = options.idGenerator ?? randomId;
     this.now = options.now ?? Date.now;
@@ -102,10 +123,16 @@ export class InMemorySessionStore implements SessionStore {
     return this.getById(sessionId, options);
   }
 
-  public async getById(sessionId: string, options: { includeExpired?: boolean } = {}): Promise<StoredSession | undefined> {
+  public async getById(
+    sessionId: string,
+    options: { includeExpired?: boolean } = {},
+  ): Promise<StoredSession | undefined> {
     await this.sweepExpired();
     const session = this.sessionsById.get(sessionId);
-    if (session === undefined || (session.status === "expired" && options.includeExpired !== true)) {
+    if (
+      session === undefined ||
+      (session.status === "expired" && options.includeExpired !== true)
+    ) {
       return undefined;
     }
     return cloneSession(session);
@@ -148,15 +175,25 @@ export class InMemorySessionStore implements SessionStore {
     return cloneSession(session);
   }
 
-  public async recordApproval(sessionId: string, deviceId: string): Promise<StoredSession | undefined> {
+  public async recordApproval(
+    sessionId: string,
+    deviceId: string,
+  ): Promise<StoredSession | undefined> {
     return this.recordDecision(sessionId, deviceId, "approved");
   }
 
-  public async recordRejection(sessionId: string, deviceId: string): Promise<StoredSession | undefined> {
+  public async recordRejection(
+    sessionId: string,
+    deviceId: string,
+  ): Promise<StoredSession | undefined> {
     return this.recordDecision(sessionId, deviceId, "rejected");
   }
 
-  public async heartbeat(sessionId: string, deviceId: string, ttlSeconds?: number): Promise<StoredSession | undefined> {
+  public async heartbeat(
+    sessionId: string,
+    deviceId: string,
+    ttlSeconds?: number,
+  ): Promise<StoredSession | undefined> {
     const session = this.sessionsById.get(sessionId);
     if (session === undefined || session.status === "ended" || session.status === "expired") {
       return undefined;
@@ -186,7 +223,11 @@ export class InMemorySessionStore implements SessionStore {
     return cloneSession(session);
   }
 
-  public async end(sessionId: string, deviceId: string, reason = "manual"): Promise<StoredSession | undefined> {
+  public async end(
+    sessionId: string,
+    deviceId: string,
+    reason = "manual",
+  ): Promise<StoredSession | undefined> {
     const session = this.sessionsById.get(sessionId);
     if (session === undefined || !canControlSession(session, deviceId)) {
       return undefined;
@@ -201,7 +242,11 @@ export class InMemorySessionStore implements SessionStore {
     await this.sweepExpired();
     let count = 0;
     for (const session of this.sessionsById.values()) {
-      if (session.hostIpKey === ipKey && session.status !== "ended" && session.status !== "expired") {
+      if (
+        session.hostIpKey === ipKey &&
+        session.status !== "ended" &&
+        session.status !== "expired"
+      ) {
         count += 1;
       }
     }
@@ -260,7 +305,12 @@ export class RedisSessionStore implements SessionStore {
 
   public constructor(
     client: RedisClientLike,
-    options: { keyPrefix?: string; codeGenerator?: CodeGenerator; idGenerator?: () => string; now?: () => number } = {},
+    options: {
+      keyPrefix?: string;
+      codeGenerator?: CodeGenerator;
+      idGenerator?: () => string;
+      now?: () => number;
+    } = {},
   ) {
     this.client = client;
     this.keyPrefix = options.keyPrefix ?? "handitoff";
@@ -304,9 +354,15 @@ export class RedisSessionStore implements SessionStore {
     return this.getById(sessionId, options);
   }
 
-  public async getById(sessionId: string, options: { includeExpired?: boolean } = {}): Promise<StoredSession | undefined> {
+  public async getById(
+    sessionId: string,
+    options: { includeExpired?: boolean } = {},
+  ): Promise<StoredSession | undefined> {
     const session = await this.read(sessionId);
-    if (session === undefined || (session.status === "expired" && options.includeExpired !== true)) {
+    if (
+      session === undefined ||
+      (session.status === "expired" && options.includeExpired !== true)
+    ) {
       return undefined;
     }
     return session;
@@ -350,15 +406,25 @@ export class RedisSessionStore implements SessionStore {
     return session;
   }
 
-  public async recordApproval(sessionId: string, deviceId: string): Promise<StoredSession | undefined> {
+  public async recordApproval(
+    sessionId: string,
+    deviceId: string,
+  ): Promise<StoredSession | undefined> {
     return this.recordDecision(sessionId, deviceId, "approved");
   }
 
-  public async recordRejection(sessionId: string, deviceId: string): Promise<StoredSession | undefined> {
+  public async recordRejection(
+    sessionId: string,
+    deviceId: string,
+  ): Promise<StoredSession | undefined> {
     return this.recordDecision(sessionId, deviceId, "rejected");
   }
 
-  public async heartbeat(sessionId: string, deviceId: string, ttlSeconds?: number): Promise<StoredSession | undefined> {
+  public async heartbeat(
+    sessionId: string,
+    deviceId: string,
+    ttlSeconds?: number,
+  ): Promise<StoredSession | undefined> {
     const session = await this.read(sessionId);
     if (session === undefined || session.status === "ended" || session.status === "expired") {
       return undefined;
@@ -388,7 +454,11 @@ export class RedisSessionStore implements SessionStore {
     return session;
   }
 
-  public async end(sessionId: string, deviceId: string, reason = "manual"): Promise<StoredSession | undefined> {
+  public async end(
+    sessionId: string,
+    deviceId: string,
+    reason = "manual",
+  ): Promise<StoredSession | undefined> {
     const session = await this.read(sessionId);
     if (session === undefined || !canControlSession(session, deviceId)) {
       return undefined;
@@ -403,7 +473,8 @@ export class RedisSessionStore implements SessionStore {
   public async countActiveByIp(ipKey: string): Promise<number> {
     const sessions = await this.readAll();
     return sessions.filter(
-      (session) => session.hostIpKey === ipKey && session.status !== "ended" && session.status !== "expired",
+      (session) =>
+        session.hostIpKey === ipKey && session.status !== "ended" && session.status !== "expired",
     ).length;
   }
 
@@ -452,7 +523,9 @@ export class RedisSessionStore implements SessionStore {
   private async readAll(): Promise<StoredSession[]> {
     const keys = await this.client.keys(this.sessionKey("*"));
     const sessions = await Promise.all(keys.map((key) => this.client.get(key)));
-    return sessions.filter((session): session is string => session !== null).map((session) => JSON.parse(session) as StoredSession);
+    return sessions
+      .filter((session): session is string => session !== null)
+      .map((session) => JSON.parse(session) as StoredSession);
   }
 
   private async persist(session: StoredSession, ttlSeconds?: number): Promise<void> {
@@ -489,4 +562,3 @@ function randomId(): string {
 function cloneSession(session: StoredSession): StoredSession {
   return JSON.parse(JSON.stringify(session)) as StoredSession;
 }
-

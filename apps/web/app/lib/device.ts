@@ -1,4 +1,10 @@
-export type DeviceLabel = "iPhone" | "Android Phone" | "MacBook" | "Windows PC" | "iPad" | "Unknown Device";
+export type DeviceLabel =
+  | "iPhone"
+  | "Android Phone"
+  | "MacBook"
+  | "Windows PC"
+  | "iPad"
+  | "Unknown Device";
 
 export type BrowserDeviceIdentity = {
   id: string;
@@ -7,7 +13,9 @@ export type BrowserDeviceIdentity = {
 
 let cachedIdentity: BrowserDeviceIdentity | undefined;
 
-export function getBrowserDeviceIdentity(userAgent = globalThis.navigator?.userAgent ?? ""): BrowserDeviceIdentity {
+export function getBrowserDeviceIdentity(
+  userAgent = globalThis.navigator?.userAgent ?? "",
+): BrowserDeviceIdentity {
   cachedIdentity ??= {
     id: createBrowserSessionId(),
     label: inferDeviceLabel(userAgent),

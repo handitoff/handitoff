@@ -2,8 +2,8 @@
 
 @theme {
   --font-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", ui-sans-serif,
-    system-ui, sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", ui-sans-serif, system-ui,
+    sans-serif;
   --color-paper: #fafaf8;
   --color-ink: #0a0a0a;
   --color-muted: #73736f;
@@ -16,8 +16,8 @@
   background: #fafaf8;
   color: #0a0a0a;
   font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", ui-sans-serif,
-    system-ui, sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", ui-sans-serif, system-ui,
+    sans-serif;
   font-synthesis: none;
   text-rendering: geometricPrecision;
 }
@@ -1056,4 +1056,3 @@ a {
     grid-template-columns: 1fr;
   }
 }
-
