@@ -11,6 +11,7 @@ function defaultPublicConfig(): PublicConfig {
     appUrl: browserOrigin ?? "http://localhost:5173",
     apiUrl: `${apiProtocol}//${browserHost}:8787`,
     wsUrl: `${wsProtocol}//${browserHost}:8787/ws`,
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     billing: { enabled: false },
     limits: {
       unpairedSessionTtlSeconds: 600,
@@ -30,6 +31,7 @@ const SERVER_DEFAULT_PUBLIC_CONFIG: PublicConfig = {
   appUrl: "http://localhost:5173",
   apiUrl: "http://localhost:8787",
   wsUrl: "ws://localhost:8787/ws",
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   billing: { enabled: false },
   limits: {
     unpairedSessionTtlSeconds: 600,
@@ -53,7 +55,8 @@ declare global {
 export function loadPublicRuntimeConfig(overrides?: Partial<PublicConfig>): PublicConfig {
   const runtimeOverrides =
     overrides ?? (typeof window === "undefined" ? undefined : window.__HANDITOFF_PUBLIC_CONFIG__);
-  const defaults = typeof window === "undefined" ? SERVER_DEFAULT_PUBLIC_CONFIG : defaultPublicConfig();
+  const defaults =
+    typeof window === "undefined" ? SERVER_DEFAULT_PUBLIC_CONFIG : defaultPublicConfig();
 
   return {
     ...defaults,

@@ -2,6 +2,7 @@ export type PublicConfig = {
   appUrl: string;
   apiUrl: string;
   wsUrl: string;
+  iceServers: PublicIceServer[];
   billing: {
     enabled: boolean;
   };
@@ -16,6 +17,12 @@ export type PublicConfig = {
     multiDeviceRooms: boolean;
     accounts: boolean;
   };
+};
+
+export type PublicIceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
 };
 
 export type ServerConfig = {
@@ -44,6 +51,7 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
   appUrl: "http://localhost:5173",
   apiUrl: "http://localhost:8787",
   wsUrl: "ws://localhost:8787/ws",
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   billing: {
     enabled: false,
   },
@@ -81,6 +89,7 @@ export function loadPublicConfig(env: ConfigEnv = process.env): PublicConfig {
     appUrl: readString(env, "HANDITOFF_APP_URL", lanDefaults.appUrl),
     apiUrl: readString(env, "HANDITOFF_API_URL", lanDefaults.apiUrl),
     wsUrl: readString(env, "HANDITOFF_WS_URL", lanDefaults.wsUrl),
+    iceServers: readIceServers(env, "HANDITOFF_ICE_SERVERS", lanDefaults.iceServers),
     billing: {
       enabled: readBoolean(env, "HANDITOFF_BILLING_ENABLED", false),
     },
@@ -153,6 +162,7 @@ export function assertValidPublicConfig(config: PublicConfig): void {
   requireUrl(config.appUrl, "appUrl", issues);
   requireUrl(config.apiUrl, "apiUrl", issues);
   requireWsUrl(config.wsUrl, "wsUrl", issues);
+  requireIceServers(config.iceServers, issues);
   requirePositiveInteger(
     config.limits.unpairedSessionTtlSeconds,
     "limits.unpairedSessionTtlSeconds",
@@ -210,6 +220,27 @@ function readPositiveInteger(env: ConfigEnv, key: string, fallback: number): num
   return parsed;
 }
 
+function readIceServers(
+  env: ConfigEnv,
+  key: string,
+  fallback: PublicIceServer[],
+): PublicIceServer[] {
+  const value = emptyToUndefined(env[key]);
+  if (value === undefined) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) {
+      throw new Error("not an array");
+    }
+    return parsed as PublicIceServer[];
+  } catch {
+    throw new ConfigError([`${key} must be a JSON array of ICE server definitions`]);
+  }
+}
+
 function requireUrl(value: string, field: string, issues: string[]): void {
   try {
     const url = new URL(value);
@@ -232,6 +263,33 @@ function requireWsUrl(value: string, field: string, issues: string[]): void {
   }
 }
 
+function requireIceServers(value: PublicIceServer[], issues: string[]): void {
+  if (!Array.isArray(value)) {
+    issues.push("iceServers must be an array");
+    return;
+  }
+
+  for (const [index, server] of value.entries()) {
+    if (typeof server !== "object" || server === null) {
+      issues.push(`iceServers.${index} must be an object`);
+      continue;
+    }
+    const urls = server.urls;
+    const validUrls =
+      typeof urls === "string" ||
+      (Array.isArray(urls) && urls.every((url) => typeof url === "string"));
+    if (!validUrls) {
+      issues.push(`iceServers.${index}.urls must be a string or string array`);
+    }
+    if (server.username !== undefined && typeof server.username !== "string") {
+      issues.push(`iceServers.${index}.username must be a string`);
+    }
+    if (server.credential !== undefined && typeof server.credential !== "string") {
+      issues.push(`iceServers.${index}.credential must be a string`);
+    }
+  }
+}
+
 function requirePositiveInteger(value: number, field: string, issues: string[]): void {
   if (!Number.isInteger(value) || value <= 0) {
     issues.push(`${field} must be a positive integer`);
@@ -242,6 +300,3 @@ function emptyToUndefined(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed === "" ? undefined : trimmed;
 }
-
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";

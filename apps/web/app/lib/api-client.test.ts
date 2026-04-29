@@ -10,6 +10,7 @@ describe("HanditoffApiClient", () => {
           appUrl: "http://localhost:5173",
           apiUrl: "http://localhost:8787",
           wsUrl: "ws://localhost:8787/ws",
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
           billing: { enabled: false },
           limits: { unpairedSessionTtlSeconds: 600, pairedSessionTtlSeconds: 1800 },
           features: { turnEnabled: false, multiDeviceRooms: false, accounts: false },
@@ -39,9 +40,11 @@ describe("HanditoffApiClient", () => {
 
   it("passes abort signals to calls", async () => {
     const controller = new AbortController();
-    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ publicCode: "ABC234", status: "waiting", expiresAt: 1 })),
-    );
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ publicCode: "ABC234", status: "waiting", expiresAt: 1 })),
+      );
     const client = new HanditoffApiClient({ baseUrl: "http://localhost:8787/", fetch });
 
     await client.getSession("ABC234", { signal: controller.signal });

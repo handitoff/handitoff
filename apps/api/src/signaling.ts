@@ -57,7 +57,8 @@ export class SignalingHub {
     this.config = options.config;
     this.store = options.store;
     this.rateLimiter =
-      options.rateLimiter ?? new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now });
+      options.rateLimiter ??
+      new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now });
     this.now = options.now ?? Date.now;
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 30_000;
   }
@@ -80,7 +81,10 @@ export class SignalingHub {
 
   public sweepHeartbeats(now = this.now()): void {
     for (const connection of this.connections.values()) {
-      if (connection.deviceId !== undefined && now - connection.lastSeenAt > this.heartbeatTimeoutMs) {
+      if (
+        connection.deviceId !== undefined &&
+        now - connection.lastSeenAt > this.heartbeatTimeoutMs
+      ) {
         connection.socket.close(4000, "heartbeat_timeout");
         this.removeSocket(connection.socket.id);
       }
@@ -119,6 +123,9 @@ export class SignalingHub {
         return;
       case "session:join":
         await this.requestJoin(connection, message);
+        return;
+      case "session:resume":
+        await this.resumeSession(connection, message);
         return;
       case "session:approve-peer":
         await this.approvePeer(connection, message);
@@ -204,8 +211,16 @@ export class SignalingHub {
       this.sendError(connection, "session_ended", "Session has ended.");
       return;
     }
-    if (session.status === "connected" || session.guestDeviceId !== undefined || this.pendingJoinsBySession.has(session.id)) {
-      this.sendError(connection, "session_full", "Session already has a pending or approved guest.");
+    if (
+      session.status === "connected" ||
+      session.guestDeviceId !== undefined ||
+      this.pendingJoinsBySession.has(session.id)
+    ) {
+      this.sendError(
+        connection,
+        "session_full",
+        "Session already has a pending or approved guest.",
+      );
       return;
     }
 
@@ -231,6 +246,69 @@ export class SignalingHub {
       peerDeviceId: message.deviceId,
       peerDeviceLabel: readLabel(message.deviceLabel, "Guest"),
     });
+  }
+
+  private async resumeSession(
+    connection: ConnectionState,
+    message: Extract<ClientMessage, { type: "session:resume" }>,
+  ): Promise<void> {
+    const session = await this.store.getById(message.sessionId, { includeExpired: true });
+    if (session === undefined) {
+      this.sendError(connection, "session_not_found", "Session not found.");
+      return;
+    }
+    if (session.status === "expired") {
+      this.sendError(connection, "session_expired", "Session has expired.");
+      return;
+    }
+    if (session.status === "ended") {
+      this.sendError(connection, "session_ended", "Session has ended.");
+      return;
+    }
+    if (session.status !== "connected" || session.guestDevice === undefined) {
+      this.sendError(connection, "peer_not_approved", "Peer must be approved before signaling.");
+      return;
+    }
+
+    const role =
+      message.deviceId === session.hostDeviceId
+        ? "host"
+        : message.deviceId === session.guestDeviceId
+          ? "guest"
+          : undefined;
+    if (role === undefined) {
+      this.sendError(connection, "not_authorized", "Device is not connected to this session.");
+      return;
+    }
+
+    const deviceLabel = role === "host" ? session.hostDevice.label : session.guestDevice.label;
+    if (!this.claimDevice(connection, message.deviceId, deviceLabel, role)) {
+      return;
+    }
+
+    connection.sessionId = session.id;
+    connection.approved = true;
+    connection.lastSeenAt = this.now();
+    await this.store.heartbeat(
+      session.id,
+      message.deviceId,
+      this.config.publicConfig.limits.pairedSessionTtlSeconds,
+    );
+
+    const peerDevice = role === "host" ? session.guestDevice : session.hostDevice;
+    connection.socket.send({
+      type: "session:resumed",
+      sessionId: session.id,
+      peerDeviceId: peerDevice.id,
+      peerDeviceLabel: peerDevice.label,
+      role,
+    });
+
+    const peer = this.findConnection(session.id, peerDevice.id);
+    if (peer !== undefined) {
+      peer.socket.send({ type: "peer:connected", peerDeviceId: message.deviceId });
+      connection.socket.send({ type: "peer:connected", peerDeviceId: peerDevice.id });
+    }
   }
 
   private async approvePeer(
@@ -296,8 +374,14 @@ export class SignalingHub {
     }
 
     this.pendingJoinsBySession.delete(message.sessionId);
-    await this.store.updateStatus(message.sessionId, "waiting", this.config.publicConfig.limits.unpairedSessionTtlSeconds);
-    this.connections.get(pending.guestSocketId)?.socket.send({ type: "session:rejected", reason: "rejected_by_host" });
+    await this.store.updateStatus(
+      message.sessionId,
+      "waiting",
+      this.config.publicConfig.limits.unpairedSessionTtlSeconds,
+    );
+    this.connections
+      .get(pending.guestSocketId)
+      ?.socket.send({ type: "session:rejected", reason: "rejected_by_host" });
   }
 
   private async ping(
@@ -309,12 +393,19 @@ export class SignalingHub {
       return;
     }
     connection.lastSeenAt = this.now();
-    await this.store.heartbeat(message.sessionId, message.deviceId, this.config.publicConfig.limits.pairedSessionTtlSeconds);
+    await this.store.heartbeat(
+      message.sessionId,
+      message.deviceId,
+      this.config.publicConfig.limits.pairedSessionTtlSeconds,
+    );
   }
 
   private async relay(
     connection: ConnectionState,
-    message: Extract<ClientMessage, { type: "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate" | "crypto:public-key" }>,
+    message: Extract<
+      ClientMessage,
+      { type: "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate" | "crypto:public-key" }
+    >,
   ): Promise<void> {
     if (!this.matchesConnection(connection, message.sessionId, message.fromDeviceId)) {
       this.sendError(connection, "not_authorized", "Device is not connected to this session.");
@@ -342,7 +433,8 @@ export class SignalingHub {
       return;
     }
 
-    const targetDeviceId = message.fromDeviceId === session.hostDeviceId ? session.guestDeviceId : session.hostDeviceId;
+    const targetDeviceId =
+      message.fromDeviceId === session.hostDeviceId ? session.guestDeviceId : session.hostDeviceId;
     const target = this.findConnection(message.sessionId, targetDeviceId);
     if (target === undefined) {
       this.sendError(connection, "peer_disconnected", "Peer is not connected.");
@@ -350,14 +442,26 @@ export class SignalingHub {
     }
 
     if (message.type === "webrtc:offer" || message.type === "webrtc:answer") {
-      target.socket.send({ type: message.type, fromDeviceId: message.fromDeviceId, sdp: message.sdp });
+      target.socket.send({
+        type: message.type,
+        fromDeviceId: message.fromDeviceId,
+        sdp: message.sdp,
+      });
       return;
     }
     if (message.type === "webrtc:ice-candidate") {
-      target.socket.send({ type: message.type, fromDeviceId: message.fromDeviceId, candidate: message.candidate });
+      target.socket.send({
+        type: message.type,
+        fromDeviceId: message.fromDeviceId,
+        candidate: message.candidate,
+      });
       return;
     }
-    target.socket.send({ type: "crypto:public-key", fromDeviceId: message.fromDeviceId, publicKey: message.publicKey });
+    target.socket.send({
+      type: "crypto:public-key",
+      fromDeviceId: message.fromDeviceId,
+      publicKey: message.publicKey,
+    });
   }
 
   private async endSession(
@@ -407,13 +511,21 @@ export class SignalingHub {
     role: "host" | "guest",
   ): boolean {
     if (connection.deviceId !== undefined && connection.deviceId !== deviceId) {
-      this.sendError(connection, "invalid_device_id", "This socket is already bound to another device.");
+      this.sendError(
+        connection,
+        "invalid_device_id",
+        "This socket is already bound to another device.",
+      );
       return false;
     }
 
     const existingSocketId = this.connectionIdsByDevice.get(deviceId);
     if (existingSocketId !== undefined && existingSocketId !== connection.socket.id) {
-      this.sendError(connection, "invalid_device_id", "Reconnect is not supported for active device IDs.");
+      this.sendError(
+        connection,
+        "invalid_device_id",
+        "Reconnect is not supported for active device IDs.",
+      );
       return false;
     }
 
@@ -440,7 +552,11 @@ export class SignalingHub {
       const pending = this.pendingJoinsBySession.get(connection.sessionId);
       if (pending?.guestSocketId === socketId) {
         this.pendingJoinsBySession.delete(connection.sessionId);
-        void this.store.updateStatus(connection.sessionId, "waiting", this.config.publicConfig.limits.unpairedSessionTtlSeconds);
+        void this.store.updateStatus(
+          connection.sessionId,
+          "waiting",
+          this.config.publicConfig.limits.unpairedSessionTtlSeconds,
+        );
       }
 
       const peer = this.findPeerConnection(connection);
@@ -472,7 +588,11 @@ export class SignalingHub {
     return connection?.sessionId === sessionId ? connection : undefined;
   }
 
-  private matchesConnection(connection: ConnectionState, sessionId: string, deviceId: string): boolean {
+  private matchesConnection(
+    connection: ConnectionState,
+    sessionId: string,
+    deviceId: string,
+  ): boolean {
     return connection.sessionId === sessionId && connection.deviceId === deviceId;
   }
 

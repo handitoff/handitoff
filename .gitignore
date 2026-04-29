@@ -8,3 +8,4 @@
 !.env.example
 **/*.tsbuildinfo
 .DS_Store
+dev-server.log

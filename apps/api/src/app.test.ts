@@ -10,6 +10,7 @@ const config: ServerConfig = {
     appUrl: "http://localhost:5173",
     apiUrl: "http://localhost:8787",
     wsUrl: "ws://localhost:8787/ws",
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     billing: { enabled: false },
     limits: {
       unpairedSessionTtlSeconds: 60,
@@ -33,7 +34,9 @@ const config: ServerConfig = {
 describe("api app", () => {
   it("returns health with a request id", async () => {
     const app = createTestApp();
-    const response = await app(new Request("http://localhost/api/health", { headers: { "x-request-id": "req-1" } }));
+    const response = await app(
+      new Request("http://localhost/api/health", { headers: { "x-request-id": "req-1" } }),
+    );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ status: "ok", requestId: "req-1" });
@@ -49,7 +52,10 @@ describe("api app", () => {
 
   it("creates a waiting session without exposing the internal id", async () => {
     const app = createTestApp();
-    const response = await postJson(app, "/api/sessions", { hostDeviceId: "host-1", hostLabel: "Laptop" });
+    const response = await postJson(app, "/api/sessions", {
+      hostDeviceId: "host-1",
+      hostLabel: "Laptop",
+    });
     const body = (await response.json()) as Record<string, unknown>;
 
     expect(response.status).toBe(201);
@@ -104,13 +110,18 @@ describe("api app", () => {
     await postJson(app, `/api/sessions/${created?.id}/end`, { deviceId: "host-1" });
     expect((await app(new Request("http://localhost/api/sessions/ABC234"))).status).toBe(410);
 
-    const expiringStore = new InMemorySessionStore({ codeGenerator: () => "GHJ456", now: () => now });
+    const expiringStore = new InMemorySessionStore({
+      codeGenerator: () => "GHJ456",
+      now: () => now,
+    });
     const expiringApp = createTestApp({ store: expiringStore, now: () => now });
     await postJson(expiringApp, "/api/sessions", { hostDeviceId: "host-2" });
     now += 61_000;
     const expiredResponse = await expiringApp(new Request("http://localhost/api/sessions/GHJ456"));
     expect(expiredResponse.status).toBe(410);
-    await expect(expiredResponse.json()).resolves.toMatchObject({ error: { code: "session_expired" } });
+    await expect(expiredResponse.json()).resolves.toMatchObject({
+      error: { code: "session_expired" },
+    });
   });
 
   it("only host or guest can end a session", async () => {
@@ -123,13 +134,17 @@ describe("api app", () => {
     const missing = await postJson(app, "/api/sessions/missing/end", { deviceId: "host-1" });
     expect(missing.status).toBe(404);
 
-    const forbidden = await postJson(app, `/api/sessions/${created?.id}/end`, { deviceId: "other" });
+    const forbidden = await postJson(app, `/api/sessions/${created?.id}/end`, {
+      deviceId: "other",
+    });
     expect(forbidden.status).toBe(403);
 
     const ended = await postJson(app, `/api/sessions/${created?.id}/end`, { deviceId: "host-1" });
     expect(ended.status).toBe(200);
 
-    const alreadyEnded = await postJson(app, `/api/sessions/${created?.id}/end`, { deviceId: "host-1" });
+    const alreadyEnded = await postJson(app, `/api/sessions/${created?.id}/end`, {
+      deviceId: "host-1",
+    });
     expect(alreadyEnded.status).toBe(409);
   });
 
@@ -178,12 +193,18 @@ function createTestApp(
     store,
     ...(options.now === undefined ? {} : { now: options.now }),
     rateLimiter: new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now }),
-    ...(options.onSessionExpired === undefined ? {} : { onSessionExpired: options.onSessionExpired }),
+    ...(options.onSessionExpired === undefined
+      ? {}
+      : { onSessionExpired: options.onSessionExpired }),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   });
 }
 
-function postJson(app: ReturnType<typeof createTestApp>, path: string, body: unknown): Promise<Response> {
+function postJson(
+  app: ReturnType<typeof createTestApp>,
+  path: string,
+  body: unknown,
+): Promise<Response> {
   return app(
     new Request(`http://localhost${path}`, {
       method: "POST",

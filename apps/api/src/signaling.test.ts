@@ -11,6 +11,7 @@ const config: ServerConfig = {
     appUrl: "http://localhost:5173",
     apiUrl: "http://localhost:8787",
     wsUrl: "ws://localhost:8787/ws",
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     billing: { enabled: false },
     limits: {
       unpairedSessionTtlSeconds: 60,
@@ -97,7 +98,7 @@ describe("signaling hub", () => {
 
   it("rejects expired, full, and repeated join attempts", async () => {
     let now = 1_000;
-    const { hub, store } = createHarness({ now: () => now, codes: ["ABC234", "DEF345"] });
+    const { hub } = createHarness({ now: () => now, codes: ["ABC234", "DEF345"] });
     const host = new FakeSocket("host");
     const guest = new FakeSocket("guest");
     const secondGuest = new FakeSocket("guest-2");
@@ -184,7 +185,10 @@ describe("signaling hub", () => {
       peerDeviceId: "guest-2",
     });
     await flush();
-    expect(last(second.guest)).toMatchObject({ type: "session:rejected", reason: "rejected_by_host" });
+    expect(last(second.guest)).toMatchObject({
+      type: "session:rejected",
+      reason: "rejected_by_host",
+    });
   });
 
   it("blocks signaling before approval and relays WebRTC messages only to the approved peer", async () => {
@@ -261,6 +265,43 @@ describe("signaling hub", () => {
     expect(last(stranger)).toMatchObject({ type: "error", code: "not_authorized" });
   });
 
+  it("resumes approved sessions and announces peer presence", async () => {
+    const { hub } = createHarness();
+    const { host, guest } = await createApprovedPair(hub);
+    host.close();
+    guest.close();
+    await flush();
+
+    const resumedHost = new FakeSocket("resumed-host");
+    const resumedGuest = new FakeSocket("resumed-guest");
+    hub.addSocket(resumedHost);
+    hub.addSocket(resumedGuest);
+
+    resumedHost.receiveJson({ type: "session:resume", sessionId: "session-1", deviceId: "host-1" });
+    await flush();
+    expect(last(resumedHost)).toMatchObject({
+      type: "session:resumed",
+      peerDeviceId: "guest-1",
+      role: "host",
+    });
+
+    resumedGuest.receiveJson({
+      type: "session:resume",
+      sessionId: "session-1",
+      deviceId: "guest-1",
+    });
+    await flush();
+    expect(resumedGuest.sent).toContainEqual(
+      expect.objectContaining({
+        type: "session:resumed",
+        peerDeviceId: "host-1",
+        role: "guest",
+      }),
+    );
+    expect(resumedHost.sent).toContainEqual({ type: "peer:connected", peerDeviceId: "guest-1" });
+    expect(resumedGuest.sent).toContainEqual({ type: "peer:connected", peerDeviceId: "host-1" });
+  });
+
   it("detects close and heartbeat timeouts", async () => {
     let now = 1_000;
     const { hub } = createHarness({ now: () => now, heartbeatTimeoutMs: 50 });
@@ -291,7 +332,9 @@ describe("signaling hub", () => {
     await flush();
     expect(last(host)).toEqual({ type: "session:ended" });
     expect(last(guest)).toEqual({ type: "session:ended" });
-    await expect(store.getById("session-1", { includeExpired: true })).resolves.toMatchObject({ status: "ended" });
+    await expect(store.getById("session-1", { includeExpired: true })).resolves.toMatchObject({
+      status: "ended",
+    });
 
     guest.receiveJson({
       type: "webrtc:offer",
@@ -319,7 +362,9 @@ function createHarness(
     store,
     rateLimiter: new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now }),
     ...(options.now === undefined ? {} : { now: options.now }),
-    ...(options.heartbeatTimeoutMs === undefined ? {} : { heartbeatTimeoutMs: options.heartbeatTimeoutMs }),
+    ...(options.heartbeatTimeoutMs === undefined
+      ? {}
+      : { heartbeatTimeoutMs: options.heartbeatTimeoutMs }),
   });
   return { hub, store };
 }

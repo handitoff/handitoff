@@ -13,6 +13,11 @@ export type ClientMessage =
       deviceLabel?: string;
     }
   | {
+      type: "session:resume";
+      sessionId: string;
+      deviceId: string;
+    }
+  | {
       type: "session:approve-peer";
       sessionId: string;
       deviceId: string;
@@ -78,6 +83,13 @@ export type ServerMessage =
       sessionId: string;
       peerDeviceId: string;
       peerDeviceLabel: string;
+    }
+  | {
+      type: "session:resumed";
+      sessionId: string;
+      peerDeviceId: string;
+      peerDeviceLabel: string;
+      role: "host" | "guest";
     }
   | {
       type: "session:rejected";

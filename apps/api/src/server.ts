@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { Socket } from "node:net";
 import { fileURLToPath } from "node:url";
 
 import { loadServerConfig } from "@handitoff/config";
@@ -21,17 +22,19 @@ export function createNodeServer() {
     onSessionExpired: (sessionId) => hub.expireSession(sessionId),
   });
 
-  const server = createServer(async (incoming, outgoing) => {
-    const request = toRequest(incoming);
-    const response = await handler(request);
+  const server = createServer((incoming, outgoing) => {
+    void (async () => {
+      const request = toRequest(incoming);
+      const response = await handler(request);
 
-    outgoing.statusCode = response.status;
-    response.headers.forEach((value, key) => outgoing.setHeader(key, value));
-    outgoing.end(Buffer.from(await response.arrayBuffer()));
+      outgoing.statusCode = response.status;
+      response.headers.forEach((value, key) => outgoing.setHeader(key, value));
+      outgoing.end(Buffer.from(await response.arrayBuffer()));
+    })();
   });
 
   server.on("upgrade", (request, socket) => {
-    if (!handleWebSocketUpgrade(hub, request, socket as import("node:net").Socket)) {
+    if (!handleWebSocketUpgrade(hub, request, socket as Socket)) {
       socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
     }
   });

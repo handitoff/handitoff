@@ -30,6 +30,8 @@ export function validateClientMessage(value: unknown): ValidationResult<ClientMe
       return requireFields(value, ["publicCode", "deviceId"], {
         optionalStrings: ["deviceLabel"],
       });
+    case "session:resume":
+      return requireFields(value, ["sessionId", "deviceId"]);
     case "session:approve-peer":
     case "session:reject-peer":
       return requireFields(value, ["sessionId", "deviceId", "peerDeviceId"]);
@@ -66,6 +68,21 @@ export function validateServerMessage(value: unknown): ValidationResult<ServerMe
       return requireFields(value, ["sessionId", "peerDeviceId", "peerDeviceLabel"]);
     case "session:joined":
       return requireFields(value, ["sessionId", "peerDeviceId", "peerDeviceLabel"]);
+    case "session:resumed": {
+      const base = requireFields<ServerMessage>(value, [
+        "sessionId",
+        "peerDeviceId",
+        "peerDeviceLabel",
+        "role",
+      ]);
+      if (!base.ok) {
+        return base;
+      }
+      if (value.role !== "host" && value.role !== "guest") {
+        return invalid("role", "Role is invalid.");
+      }
+      return ok(value as ServerMessage);
+    }
     case "session:rejected":
       return requireFields(value, ["reason"]);
     case "peer:connected":

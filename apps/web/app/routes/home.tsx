@@ -55,7 +55,8 @@ function LHero() {
       return;
     }
 
-    const update = () => setRemainingSeconds(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+    const update = () =>
+      setRemainingSeconds(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
     update();
     const interval = window.setInterval(update, 1000);
     return () => window.clearInterval(interval);
@@ -85,15 +86,25 @@ function LHero() {
         socketRef.current = socket;
 
         socket.onStatus((status) => {
-          dispatch(status === "connected" ? { type: "socket:connected" } : { type: "socket:disconnected" });
+          dispatch(
+            status === "connected" ? { type: "socket:connected" } : { type: "socket:disconnected" },
+          );
           if (status === "connected") {
-            socket.send({ type: "session:create", deviceId: identity.id, deviceLabel: identity.label });
+            socket.send({
+              type: "session:create",
+              deviceId: identity.id,
+              deviceLabel: identity.label,
+            });
           }
         });
 
         socket.onMessage((message) => {
           if (message.type === "session:created") {
-            dispatch({ type: "session:created", sessionId: message.sessionId, publicCode: message.publicCode });
+            dispatch({
+              type: "session:created",
+              sessionId: message.sessionId,
+              publicCode: message.publicCode,
+            });
             setJoinUrl(message.joinUrl);
             setExpiresAt(message.expiresAt);
             return;
@@ -117,9 +128,18 @@ function LHero() {
               sessionId: current.sessionId ?? "",
               peerDeviceId: message.peerDeviceId,
               peerDeviceLabel: peerLabel,
+              role: "host",
             });
+            window.sessionStorage.setItem("handitoff.sessionId", current.sessionId ?? "");
+            window.sessionStorage.setItem("handitoff.deviceId", current.deviceId ?? "");
+            window.sessionStorage.setItem(
+              "handitoff.deviceLabel",
+              current.deviceLabel ?? "MacBook",
+            );
+            window.sessionStorage.setItem("handitoff.peerDeviceId", message.peerDeviceId);
             window.sessionStorage.setItem("handitoff.connectedPeerLabel", peerLabel);
             window.sessionStorage.setItem("handitoff.connectedCode", current.publicCode ?? "");
+            window.sessionStorage.setItem("handitoff.role", "host");
             navigate(`/s/${current.publicCode ?? ""}`);
             return;
           }
@@ -167,7 +187,11 @@ function LHero() {
   }, [remainingSeconds]);
 
   const approvePeer = () => {
-    if (state.sessionId === undefined || state.deviceId === undefined || state.pendingPeerDeviceId === undefined) {
+    if (
+      state.sessionId === undefined ||
+      state.deviceId === undefined ||
+      state.pendingPeerDeviceId === undefined
+    ) {
       return;
     }
     socketRef.current?.send({
@@ -179,7 +203,11 @@ function LHero() {
   };
 
   const rejectPeer = () => {
-    if (state.sessionId === undefined || state.deviceId === undefined || state.pendingPeerDeviceId === undefined) {
+    if (
+      state.sessionId === undefined ||
+      state.deviceId === undefined ||
+      state.pendingPeerDeviceId === undefined
+    ) {
       return;
     }
     socketRef.current?.send({
@@ -192,7 +220,11 @@ function LHero() {
 
   const refreshSession = () => {
     if (state.sessionId !== undefined && state.deviceId !== undefined) {
-      socketRef.current?.send({ type: "session:end", sessionId: state.sessionId, deviceId: state.deviceId });
+      socketRef.current?.send({
+        type: "session:end",
+        sessionId: state.sessionId,
+        deviceId: state.deviceId,
+      });
     }
     socketRef.current?.close();
     setRestartKey((key) => key + 1);
@@ -210,7 +242,7 @@ function LHero() {
 
   const hostStatus =
     state.connection === "error"
-      ? state.error ?? "Could not create session"
+      ? (state.error ?? "Could not create session")
       : state.pendingPeerDeviceLabel !== undefined
         ? `${state.pendingPeerDeviceLabel} wants to pair.`
         : state.connection === "creating"
@@ -247,9 +279,8 @@ function LHero() {
             Receive.
           </h1>
           <p className="lede">
-            Scan the code with any phone. A peer-to-peer channel opens for the
-            next ten minutes — files move directly between your devices and
-            nowhere else.
+            Scan the code with any phone. A peer-to-peer channel opens for the next ten minutes —
+            files move directly between your devices and nowhere else.
           </p>
           <div className="drop-strip" aria-label="File drop area">
             <span>Drop files after pairing</span>
@@ -380,8 +411,7 @@ function LWhy() {
           </div>
           <div>
             <h2 className="el-why-headline">
-              Moving a file shouldn&apos;t{" "}
-              <em>require</em> a service that knows your name.
+              Moving a file shouldn&apos;t <em>require</em> a service that knows your name.
             </h2>
             <div className="el-why-reasons">
               {reasons.map((r) => (
@@ -405,9 +435,9 @@ function LQuote() {
       <div className="el-quote-inner">
         <div className="el-quote-label">№ 004 — In practice</div>
         <p className="el-quote-text">
-          &ldquo;It is the <em>shortest path</em> between two devices that I
-          have ever used. I open the tab, I scan, the file is there. The whole
-          thing took less time than reading this sentence.&rdquo;
+          &ldquo;It is the <em>shortest path</em> between two devices that I have ever used. I open
+          the tab, I scan, the file is there. The whole thing took less time than reading this
+          sentence.&rdquo;
         </p>
         <div className="el-quote-attr">A satisfied accomplice</div>
       </div>
@@ -500,9 +530,7 @@ function LFaq() {
         <div className="el-faq-list">
           {items.map((it, i) => (
             <div key={i} className="el-faq-row">
-              <span className="el-faq-index">
-                {String(i + 1).padStart(2, "0")}
-              </span>
+              <span className="el-faq-index">{String(i + 1).padStart(2, "0")}</span>
               <h3 className="el-faq-q">{it.q}</h3>
               <p className="el-faq-a">{it.a}</p>
             </div>
@@ -521,25 +549,13 @@ function LFooter() {
           <div className="el-footer-brand">
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className="wordmark-dots" aria-hidden="true">
-                <span
-                  className="wordmark-dot"
-                  style={{ background: "#fafaf8" }}
-                />
-                <span
-                  className="wordmark-dot"
-                  style={{ background: "#fafaf8" }}
-                />
-                <span
-                  className="wordmark-dot"
-                  style={{ background: "#fafaf8" }}
-                />
+                <span className="wordmark-dot" style={{ background: "#fafaf8" }} />
+                <span className="wordmark-dot" style={{ background: "#fafaf8" }} />
+                <span className="wordmark-dot" style={{ background: "#fafaf8" }} />
               </span>
               <span className="wordmark-text">handitoff.io</span>
             </div>
-            <p>
-              A small instrument for moving files between two devices, made with
-              patience.
-            </p>
+            <p>A small instrument for moving files between two devices, made with patience.</p>
           </div>
           {[
             {
@@ -586,4 +602,3 @@ function LFooter() {
     </footer>
   );
 }
-

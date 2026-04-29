@@ -31,6 +31,7 @@ export type PublicConfig = {
   appUrl: string;
   apiUrl: string;
   wsUrl: string;
+  iceServers: PublicIceServer[];
   billing: {
     enabled: boolean;
   };
@@ -45,6 +46,12 @@ export type PublicConfig = {
     multiDeviceRooms: boolean;
     accounts: boolean;
   };
+};
+
+export type PublicIceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
 };
 
 export type JsonPrimitive = string | number | boolean | null;

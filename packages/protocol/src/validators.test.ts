@@ -10,6 +10,7 @@ describe("validateClientMessage", () => {
   it.each([
     [{ type: "session:create", deviceId: "device-1" }],
     [{ type: "session:join", publicCode: "A7K9Q2", deviceId: "device-1" }],
+    [{ type: "session:resume", sessionId: "session-1", deviceId: "device-1" }],
     [
       {
         type: "session:approve-peer",
@@ -111,6 +112,15 @@ describe("validateServerMessage", () => {
         sessionId: "session-1",
         peerDeviceId: "host-1",
         peerDeviceLabel: "MacBook",
+      },
+    ],
+    [
+      {
+        type: "session:resumed",
+        sessionId: "session-1",
+        peerDeviceId: "host-1",
+        peerDeviceLabel: "MacBook",
+        role: "guest",
       },
     ],
     [{ type: "session:rejected", reason: "Rejected by host." }],

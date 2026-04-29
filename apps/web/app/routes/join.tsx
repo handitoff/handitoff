@@ -24,7 +24,12 @@ export default function Join({ params }: Route.ComponentProps) {
     const initialConfig = loadPublicRuntimeConfig();
     const api = new HanditoffApiClient({ baseUrl: initialConfig.apiUrl });
 
-    dispatch({ type: "session:join-start", publicCode, deviceId: identity.id, deviceLabel: identity.label });
+    dispatch({
+      type: "session:join-start",
+      publicCode,
+      deviceId: identity.id,
+      deviceLabel: identity.label,
+    });
     dispatch({ type: "socket:connecting" });
 
     void api
@@ -39,7 +44,9 @@ export default function Join({ params }: Route.ComponentProps) {
         socketRef.current = socket;
 
         socket.onStatus((status) => {
-          dispatch(status === "connected" ? { type: "socket:connected" } : { type: "socket:disconnected" });
+          dispatch(
+            status === "connected" ? { type: "socket:connected" } : { type: "socket:disconnected" },
+          );
           if (status === "connected") {
             socket.send({
               type: "session:join",
@@ -62,15 +69,24 @@ export default function Join({ params }: Route.ComponentProps) {
               sessionId: message.sessionId,
               peerDeviceId: message.peerDeviceId,
               peerDeviceLabel: message.peerDeviceLabel,
+              role: "guest",
             });
+            window.sessionStorage.setItem("handitoff.sessionId", message.sessionId);
+            window.sessionStorage.setItem("handitoff.deviceId", identity.id);
+            window.sessionStorage.setItem("handitoff.deviceLabel", identity.label);
+            window.sessionStorage.setItem("handitoff.peerDeviceId", message.peerDeviceId);
             window.sessionStorage.setItem("handitoff.connectedPeerLabel", message.peerDeviceLabel);
             window.sessionStorage.setItem("handitoff.connectedCode", publicCode);
+            window.sessionStorage.setItem("handitoff.role", "guest");
             navigate(`/s/${publicCode}`);
             return;
           }
 
           if (message.type === "session:rejected") {
-            dispatch({ type: "session:rejected", message: "The host rejected this pairing request." });
+            dispatch({
+              type: "session:rejected",
+              message: "The host rejected this pairing request.",
+            });
             return;
           }
 
@@ -157,9 +173,7 @@ export default function Join({ params }: Route.ComponentProps) {
       <main className="mobile-flow">
         <div className="mobile-card">
           <div className="section-label">No. 001 - Handshake</div>
-          <h1 className="mobile-title">
-            {title}
-          </h1>
+          <h1 className="mobile-title">{title}</h1>
           <p>{body}</p>
           <div className="status-line">
             {state.connection === "joining" || state.connection === "idle" ? (
