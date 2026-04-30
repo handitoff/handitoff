@@ -109,6 +109,28 @@ describe("reduceClientSessionState", () => {
     expect(paired.pendingPeerDeviceId).toBeUndefined();
   });
 
+  it("does not turn a created session into a creation error when the socket disconnects", () => {
+    const waiting = reduceClientSessionState(
+      reduceClientSessionState(initialClientSessionState, {
+        type: "session:create-start",
+        deviceId: "host-1",
+        deviceLabel: "MacBook",
+      }),
+      {
+        type: "session:created",
+        sessionId: "session-1",
+        publicCode: "ABC234",
+      },
+    );
+
+    expect(reduceClientSessionState(waiting, { type: "socket:disconnected" })).toMatchObject({
+      connection: "waiting",
+      sessionId: "session-1",
+      publicCode: "ABC234",
+      websocket: "disconnected",
+    });
+  });
+
   it("tracks rejected and expired pairing states", () => {
     const joining = reduceClientSessionState(initialClientSessionState, {
       type: "session:join-start",

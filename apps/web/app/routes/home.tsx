@@ -160,6 +160,30 @@ function LHero() {
         });
 
         socket.connect();
+
+        const presenceInterval = window.setInterval(() => {
+          const current = stateRef.current;
+          if (socketRef.current !== socket) {
+            window.clearInterval(presenceInterval);
+            return;
+          }
+          if (current.sessionId === undefined || current.deviceId === undefined) {
+            return;
+          }
+          try {
+            socket.send({
+              type: "presence:ping",
+              sessionId: current.sessionId,
+              deviceId: current.deviceId,
+            });
+          } catch {
+            // The QR/link remains valid; socket state is handled separately from session creation.
+          }
+        }, 10_000);
+
+        controller.signal.addEventListener("abort", () => window.clearInterval(presenceInterval), {
+          once: true,
+        });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -240,16 +264,6 @@ function LHero() {
     });
   };
 
-  const hostStatus =
-    state.connection === "error"
-      ? (state.error ?? "Could not create session")
-      : state.pendingPeerDeviceLabel !== undefined
-        ? `${state.pendingPeerDeviceLabel} wants to pair.`
-        : state.connection === "creating"
-          ? "Creating session"
-          : state.connection === "expired"
-            ? "Session expired"
-            : "Awaiting handshake";
   const displayJoinUrl = joinUrl === "" ? "Creating link..." : joinUrl.replace(/^https?:\/\//, "");
 
   return (
@@ -262,9 +276,6 @@ function LHero() {
         </span>
         <span className="wordmark-text">handitoff.io</span>
       </Link>
-      <div className="l-chrome-status" aria-hidden="true">
-        {hostStatus}
-      </div>
       <div className="l-chrome-bottom" aria-hidden="true">
         <span>handitoff.io · 2026</span>
         <span>Scroll ↓</span>

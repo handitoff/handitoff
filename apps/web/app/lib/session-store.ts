@@ -33,10 +33,14 @@ export type ClientSessionState = {
 
 export type TransferItem = {
   id: string;
+  fileId?: string;
   name: string;
   size: number;
   progress: number;
   direction: "incoming" | "outgoing";
+  status?: string;
+  error?: string;
+  downloadUrl?: string;
 };
 
 export type ClientSessionAction =
@@ -113,7 +117,10 @@ export function reduceClientSessionState(
       return {
         ...state,
         websocket: "disconnected",
-        connection: state.connection === "ended" ? "ended" : "error",
+        connection:
+          state.connection === "creating" || state.connection === "joining"
+            ? "error"
+            : state.connection,
         ...(action.reason === undefined ? {} : { error: action.reason }),
       };
     case "session:create-start":

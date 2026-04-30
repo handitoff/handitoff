@@ -87,6 +87,13 @@ export class WebRtcPeer {
     this.dataChannel.send(JSON.stringify(value));
   }
 
+  public getOpenDataChannel(): RTCDataChannel {
+    if (this.dataChannel?.readyState !== "open") {
+      throw new Error("DataChannel is not open.");
+    }
+    return this.dataChannel;
+  }
+
   public close(): void {
     if (this.closed) {
       return;

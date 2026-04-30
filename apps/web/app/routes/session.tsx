@@ -6,6 +6,7 @@ import {
   importEcdhPublicKey,
   type EcdhKeyPair,
 } from "@handitoff/crypto";
+import { BrowserTransferController, type TransferProgressSnapshot } from "@handitoff/transfer";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppShell } from "../components/app-shell";
@@ -13,6 +14,7 @@ import {
   initialClientSessionState,
   reduceClientSessionState,
   type ClientSessionState,
+  type TransferItem,
 } from "../lib/session-store";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
@@ -37,9 +39,13 @@ export default function Session({ params }: Route.ComponentProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const socketRef = useRef<HanditoffWebSocketClient | undefined>(undefined);
   const peerRef = useRef<WebRtcPeer | undefined>(undefined);
+  const transferRef = useRef<BrowserTransferController | undefined>(undefined);
   const keyPairRef = useRef<EcdhKeyPair | undefined>(undefined);
   const aesKeyRef = useRef<CryptoKey | undefined>(undefined);
+  const objectUrlsRef = useRef<string[]>([]);
+  const localPublicKeyRef = useRef<JsonWebKey | undefined>(undefined);
   const pendingPeerPublicKeyRef = useRef<JsonWebKey | undefined>(undefined);
+  const cryptoFailureMessageRef = useRef<string | undefined>(undefined);
   const stateRef = useRef<ClientSessionState>(initialClientSessionState);
   const configRef = useRef(loadPublicRuntimeConfig());
   const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
@@ -53,51 +59,129 @@ export default function Session({ params }: Route.ComponentProps) {
   const teardownPeer = useCallback(() => {
     peerRef.current?.close();
     peerRef.current = undefined;
+    transferRef.current = undefined;
     keyPairRef.current = undefined;
     aesKeyRef.current = undefined;
+    localPublicKeyRef.current = undefined;
     pendingPeerPublicKeyRef.current = undefined;
+    cryptoFailureMessageRef.current = undefined;
+    for (const url of objectUrlsRef.current) {
+      URL.revokeObjectURL(url);
+    }
+    objectUrlsRef.current = [];
   }, []);
 
   const sendSignal = useCallback((message: Parameters<HanditoffWebSocketClient["send"]>[0]) => {
     socketRef.current?.send(message);
   }, []);
 
+  const sendPeerControl = useCallback((message: unknown) => {
+    try {
+      peerRef.current?.sendJson(message);
+    } catch {
+      // The control message will be retried on DataChannel open when relevant.
+    }
+  }, []);
+
   const sendLocalPublicKey = useCallback(
     async (keyPair: EcdhKeyPair) => {
       const current = stateRef.current;
-      if (current.sessionId === undefined || current.deviceId === undefined) {
+      const publicKey = await exportEcdhPublicKey(keyPair.publicKey);
+      localPublicKeyRef.current = publicKey;
+
+      if (current.sessionId !== undefined && current.deviceId !== undefined) {
+        sendSignal({
+          type: "crypto:public-key",
+          sessionId: current.sessionId,
+          fromDeviceId: current.deviceId,
+          publicKey,
+        });
+      }
+      sendPeerControl({ type: "crypto:public-key", publicKey });
+    },
+    [sendPeerControl, sendSignal],
+  );
+
+  const snapshotToTransferItem = useCallback((snapshot: TransferProgressSnapshot) => {
+    dispatch({
+      type: "transfer:upsert",
+      item: {
+        id: `${snapshot.transferId}:${snapshot.fileId ?? "transfer"}`,
+        name: snapshot.name ?? "Transfer",
+        size: snapshot.totalBytes,
+        progress: snapshot.progress,
+        direction: snapshot.direction,
+        ...(snapshot.fileId === undefined ? {} : { fileId: snapshot.fileId }),
+        status: snapshot.status,
+        ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
+        ...(snapshot.downloadUrl === undefined ? {} : { downloadUrl: snapshot.downloadUrl }),
+      },
+    });
+  }, []);
+
+  const ensureTransferController = useCallback(() => {
+    if (transferRef.current !== undefined || aesKeyRef.current === undefined) {
+      return transferRef.current;
+    }
+    let channel: RTCDataChannel;
+    try {
+      if (peerRef.current === undefined) {
+        return undefined;
+      }
+      channel = peerRef.current.getOpenDataChannel();
+    } catch {
+      return undefined;
+    }
+    transferRef.current = new BrowserTransferController({
+      channel,
+      key: aesKeyRef.current,
+      createObjectUrl: (blob) => {
+        const url = URL.createObjectURL(blob);
+        objectUrlsRef.current.push(url);
+        return url;
+      },
+      events: {
+        // Product decision for MVP: an approved peer's file offer is accepted automatically.
+        onOffer: () => true,
+        onProgress: snapshotToTransferItem,
+        onComplete: snapshotToTransferItem,
+        onError: snapshotToTransferItem,
+      },
+    });
+    return transferRef.current;
+  }, [snapshotToTransferItem]);
+
+  const completeCryptoExchange = useCallback(
+    async (peerPublicKey: JsonWebKey) => {
+      const keyPair = keyPairRef.current;
+      if (keyPair === undefined) {
+        pendingPeerPublicKeyRef.current = peerPublicKey;
         return;
       }
 
-      sendSignal({
-        type: "crypto:public-key",
-        sessionId: current.sessionId,
-        fromDeviceId: current.deviceId,
-        publicKey: await exportEcdhPublicKey(keyPair.publicKey),
-      });
+      const importedPeerPublicKey = await importEcdhPublicKey(peerPublicKey);
+      aesKeyRef.current = await deriveAesGcmKey(keyPair.privateKey, importedPeerPublicKey);
+      pendingPeerPublicKeyRef.current = undefined;
+      dispatch({ type: "crypto:ready" });
+      setLastDataChannelMessage("Secure");
+      ensureTransferController();
     },
-    [sendSignal],
+    [ensureTransferController],
   );
-
-  const completeCryptoExchange = useCallback(async (peerPublicKey: JsonWebKey) => {
-    const keyPair = keyPairRef.current;
-    if (keyPair === undefined) {
-      pendingPeerPublicKeyRef.current = peerPublicKey;
-      return;
-    }
-
-    const importedPeerPublicKey = await importEcdhPublicKey(peerPublicKey);
-    aesKeyRef.current = await deriveAesGcmKey(keyPair.privateKey, importedPeerPublicKey);
-    pendingPeerPublicKeyRef.current = undefined;
-    dispatch({ type: "crypto:ready" });
-    setLastDataChannelMessage("Secure");
-  }, []);
 
   const startCryptoExchange = useCallback(async () => {
     keyPairRef.current = undefined;
     aesKeyRef.current = undefined;
+    localPublicKeyRef.current = undefined;
     pendingPeerPublicKeyRef.current = undefined;
     dispatch({ type: "crypto:generating" });
+
+    const unavailableMessage = getCryptoUnavailableMessage();
+    if (unavailableMessage !== undefined) {
+      cryptoFailureMessageRef.current = unavailableMessage;
+      sendPeerControl({ type: "crypto:error", message: unavailableMessage });
+      throw new Error(unavailableMessage);
+    }
 
     const keyPair = await generateEcdhKeyPair();
     keyPairRef.current = keyPair;
@@ -108,7 +192,7 @@ export default function Session({ params }: Route.ComponentProps) {
     if (pendingPeerPublicKey !== undefined) {
       await completeCryptoExchange(pendingPeerPublicKey);
     }
-  }, [completeCryptoExchange, sendLocalPublicKey]);
+  }, [completeCryptoExchange, sendLocalPublicKey, sendPeerControl]);
 
   const handlePeerEvent = useCallback(
     (event: WebRtcPeerEvent) => {
@@ -149,7 +233,20 @@ export default function Session({ params }: Route.ComponentProps) {
       if (event.type === "data-channel-open") {
         dispatch({ type: "data-channel:open" });
         setLastDataChannelMessage("Securing");
-        peerRef.current?.sendJson({ type: "connection:ping", sentAt: Date.now() });
+        ensureTransferController();
+        if (cryptoFailureMessageRef.current !== undefined) {
+          sendPeerControl({
+            type: "crypto:error",
+            message: cryptoFailureMessageRef.current,
+          });
+        }
+        if (localPublicKeyRef.current !== undefined) {
+          sendPeerControl({
+            type: "crypto:public-key",
+            publicKey: localPublicKeyRef.current,
+          });
+        }
+        sendPeerControl({ type: "connection:ping", sentAt: Date.now() });
         return;
       }
       if (event.type === "data-channel-close") {
@@ -164,7 +261,7 @@ export default function Session({ params }: Route.ComponentProps) {
         if (typeof event.data === "string") {
           const parsed = parseDataChannelControlMessage(event.data);
           if (parsed?.type === "connection:ping") {
-            peerRef.current?.sendJson({ type: "connection:pong", receivedAt: Date.now() });
+            sendPeerControl({ type: "connection:pong", receivedAt: Date.now() });
             setLastDataChannelMessage("Ready");
             return;
           }
@@ -172,15 +269,45 @@ export default function Session({ params }: Route.ComponentProps) {
             setLastDataChannelMessage("Ready");
             return;
           }
+          if (parsed?.type === "crypto:error") {
+            dispatch({
+              type: "crypto:failed",
+              message:
+                parsed.message ??
+                "The paired browser cannot start encrypted transfer. Open both devices over HTTPS or localhost.",
+            });
+            return;
+          }
+          if (parsed?.type === "crypto:public-key" && parsed.publicKey !== undefined) {
+            void completeCryptoExchange(parsed.publicKey).catch((error: unknown) => {
+              const errorMessage = getCryptoErrorMessage(error);
+              cryptoFailureMessageRef.current = errorMessage;
+              sendPeerControl({ type: "crypto:error", message: errorMessage });
+              dispatch({
+                type: "crypto:failed",
+                message: errorMessage,
+              });
+            });
+            return;
+          }
         }
-        setLastDataChannelMessage("Message received");
+        void transferRef.current?.handleData(event.data).catch((error: unknown) => {
+          dispatch({
+            type: "data-channel:failed",
+            message: error instanceof Error ? error.message : "Transfer message failed.",
+          });
+        });
+        setLastDataChannelMessage("Transfer update");
         return;
       }
       if (event.type === "failed") {
+        if (stateRef.current.dataChannel === "open" && stateRef.current.crypto === "ready") {
+          return;
+        }
         dispatch({ type: "webrtc:failed", message: event.message });
       }
     },
-    [sendSignal],
+    [ensureTransferController, sendPeerControl, sendSignal],
   );
 
   const createPeer = useCallback(
@@ -194,13 +321,16 @@ export default function Session({ params }: Route.ComponentProps) {
         onEvent: handlePeerEvent,
       });
       void startCryptoExchange().catch((error: unknown) => {
+        const message = getCryptoErrorMessage(error);
+        cryptoFailureMessageRef.current = message;
+        sendPeerControl({ type: "crypto:error", message });
         dispatch({
           type: "crypto:failed",
-          message: error instanceof Error ? error.message : "Could not start secure transfer.",
+          message,
         });
       });
     },
-    [handlePeerEvent, startCryptoExchange, teardownPeer],
+    [handlePeerEvent, sendPeerControl, startCryptoExchange, teardownPeer],
   );
 
   useEffect(() => {
@@ -290,10 +420,12 @@ export default function Session({ params }: Route.ComponentProps) {
           }
           if (message.type === "crypto:public-key") {
             void completeCryptoExchange(message.publicKey).catch((error: unknown) => {
+              const errorMessage = getCryptoErrorMessage(error);
+              cryptoFailureMessageRef.current = errorMessage;
+              sendPeerControl({ type: "crypto:error", message: errorMessage });
               dispatch({
                 type: "crypto:failed",
-                message:
-                  error instanceof Error ? error.message : "Could not finish secure transfer.",
+                message: errorMessage,
               });
             });
             return;
@@ -323,6 +455,26 @@ export default function Session({ params }: Route.ComponentProps) {
         });
 
         socket.connect();
+
+        const presenceInterval = window.setInterval(() => {
+          if (socketRef.current !== socket) {
+            window.clearInterval(presenceInterval);
+            return;
+          }
+          try {
+            socket.send({
+              type: "presence:ping",
+              sessionId: stored.sessionId,
+              deviceId: stored.deviceId,
+            });
+          } catch {
+            // The status listener owns user-facing reconnect state.
+          }
+        }, 10_000);
+
+        controller.signal.addEventListener("abort", () => window.clearInterval(presenceInterval), {
+          once: true,
+        });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -339,11 +491,42 @@ export default function Session({ params }: Route.ComponentProps) {
       socketRef.current?.close();
       socketRef.current = undefined;
     };
-  }, [createPeer, navigate, params.code, retryKey, teardownPeer]);
+  }, [createPeer, navigate, params.code, retryKey, sendPeerControl, teardownPeer]);
 
   const chooseFiles = () => inputRef.current?.click();
   const readFiles = (files: FileList | null) => {
-    setChosenFiles(files === null ? [] : Array.from(files));
+    const selected = files === null ? [] : Array.from(files);
+    setChosenFiles(selected);
+    if (selected.length === 0) {
+      return;
+    }
+    const controller = ensureTransferController();
+    if (controller === undefined) {
+      dispatch({
+        type: "data-channel:failed",
+        message: "Secure transfer is not ready yet.",
+      });
+      return;
+    }
+    try {
+      controller.sendFiles(selected);
+    } catch (error) {
+      dispatch({
+        type: "data-channel:failed",
+        message: error instanceof Error ? error.message : "Could not start file transfer.",
+      });
+    }
+  };
+  const cancelTransfer = (id: string, fileId: string | undefined) => {
+    transferRef.current?.cancelTransfer(id.split(":")[0] ?? id, fileId);
+  };
+  const retryTransfer = (id: string) => {
+    void transferRef.current?.retryTransfer(id.split(":")[0] ?? id).catch((error: unknown) => {
+      dispatch({
+        type: "data-channel:failed",
+        message: error instanceof Error ? error.message : "Could not retry transfer.",
+      });
+    });
   };
   const retryConnection = () => setRetryKey((key) => key + 1);
   const endSession = () => {
@@ -359,21 +542,16 @@ export default function Session({ params }: Route.ComponentProps) {
     navigate("/");
   };
 
-  const connectionLabel =
-    state.webrtc === "connected" && state.dataChannel === "open" && state.crypto === "ready"
-      ? "Secure transfer ready"
-      : state.webrtc === "connected" && state.dataChannel === "open"
-        ? "Securing transfer"
-        : state.webrtc === "failed" || state.dataChannel === "failed"
-          ? "Direct channel not ready"
-          : "Opening direct channel";
   const canSendFiles = state.dataChannel === "open" && state.crypto === "ready";
+  const hasChannelIssue =
+    state.dataChannel === "failed" ||
+    state.crypto === "failed" ||
+    (state.webrtc === "failed" && state.dataChannel !== "open");
+  const connectionLabel = getConnectionLabel(state, canSendFiles, hasChannelIssue);
+  const channelFootnote = getChannelFootnote(state, canSendFiles, hasChannelIssue);
   const peerLabel = state.peerDeviceLabel ?? "Paired device";
-  const retryHint = isLocalDevelopment()
-    ? "The local browser channel did not finish opening. Retry restarts the browser connection without creating a new pairing code."
-    : configRef.current.features.turnEnabled
-      ? "Retry can request a fresh direct path."
-      : "Some restricted networks can block direct browser transfers. Retry first; TURN relay support is configured separately for production deployments.";
+  const outgoingTransfers = state.transfer.outgoing;
+  const incomingTransfers = state.transfer.incoming;
 
   return (
     <AppShell>
@@ -396,7 +574,7 @@ export default function Session({ params }: Route.ComponentProps) {
         }}
       >
         <section className="hero-panel">
-          <div className="section-label">No. 002 - Channel open</div>
+          <div className="section-label">No. 002 - {canSendFiles ? "Ready" : "Pairing"}</div>
           <h1 className="display-title">
             Drop
             <br />
@@ -406,7 +584,12 @@ export default function Session({ params }: Route.ComponentProps) {
             Files dropped here will appear on the paired device. Photos, archives, documents,
             anything you need to hand off.
           </p>
-          {state.webrtc === "failed" ? <p className="lede">{retryHint}</p> : null}
+          {hasChannelIssue ? (
+            <p className="lede">
+              The direct browser connection dropped. Retry restarts the connection without creating
+              a new pairing code.
+            </p>
+          ) : null}
           <div className="drop-strip" aria-label="File drop area">
             <span>{dragActive ? "Release to stage files" : "Drop files anywhere"}</span>
             <span>{params.code}</span>
@@ -428,9 +611,7 @@ export default function Session({ params }: Route.ComponentProps) {
                   ? "Securing transfer"
                   : "Waiting for channel"}
             </button>
-            {state.webrtc === "failed" ||
-            state.dataChannel === "failed" ||
-            state.crypto === "failed" ? (
+            {hasChannelIssue ? (
               <button className="button secondary" type="button" onClick={retryConnection}>
                 Retry
               </button>
@@ -443,7 +624,7 @@ export default function Session({ params }: Route.ComponentProps) {
         <div className="hairline" />
         <aside className="side-panel">
           <div className="panel-head">
-            <span>Connected</span>
+            <span>{canSendFiles ? "Ready" : hasChannelIssue ? "Needs retry" : "Connecting"}</span>
             <span>02</span>
           </div>
           <div className="device-paired">
@@ -457,35 +638,137 @@ export default function Session({ params }: Route.ComponentProps) {
             </div>
           </div>
           <div className="transfer-list">
-            <div className="progress-row">
-              <div
-                className="progress-fill"
-                style={{
-                  width: canSendFiles ? "100%" : state.dataChannel === "open" ? "70%" : "35%",
-                }}
-              />
-              <span>01 Outbound</span>
-              <span>{chosenFiles.length === 0 ? "Empty" : `${chosenFiles.length} ready`}</span>
-            </div>
-            <div className="progress-row">
-              <div
-                className="progress-fill"
-                style={{ width: state.crypto === "ready" ? "100%" : "0%" }}
-              />
-              <span>02 Inbound</span>
-              <span>{lastDataChannelMessage}</span>
-            </div>
+            <TransferRows
+              title="01 Outbound"
+              empty={chosenFiles.length === 0 ? "Empty" : `${chosenFiles.length} queued`}
+              items={outgoingTransfers}
+              onCancel={cancelTransfer}
+              onRetry={retryTransfer}
+            />
+            <TransferRows
+              title="02 Inbound"
+              empty={lastDataChannelMessage}
+              items={incomingTransfers}
+              onCancel={cancelTransfer}
+              onRetry={retryTransfer}
+            />
           </div>
           <div className="panel-foot">
-            <span>
-              {state.websocket === "connected" ? "Signaling connected" : "Signaling offline"}
-            </span>
-            <span>{state.crypto === "ready" ? "secure" : state.dataChannel}</span>
+            <span>{channelFootnote}</span>
           </div>
         </aside>
       </main>
     </AppShell>
   );
+}
+
+function TransferRows({
+  title,
+  empty,
+  items,
+  onCancel,
+  onRetry,
+}: {
+  title: string;
+  empty: string;
+  items: TransferItem[];
+  onCancel: (id: string, fileId: string | undefined) => void;
+  onRetry: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="progress-row">
+        <div className="progress-fill" style={{ width: "0%" }} />
+        <span>{title}</span>
+        <span>{empty}</span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {items.map((item) => (
+        <div className="progress-row progress-row--file" key={item.id}>
+          <div className="progress-fill" style={{ width: `${Math.round(item.progress * 100)}%` }} />
+          <span title={item.name}>{item.name}</span>
+          <span>{formatTransferStatus(item)}</span>
+          <div className="transfer-actions">
+            {item.downloadUrl !== undefined && item.status === "complete" ? (
+              <a className="mini-action" href={item.downloadUrl} download={item.name}>
+                Save
+              </a>
+            ) : null}
+            {item.status === "failed" || item.status === "rejected" ? (
+              <button className="mini-action" type="button" onClick={() => onRetry(item.id)}>
+                Retry
+              </button>
+            ) : null}
+            {item.status !== "complete" &&
+            item.status !== "failed" &&
+            item.status !== "canceled" ? (
+              <button
+                className="mini-action"
+                type="button"
+                onClick={() => onCancel(item.id, item.fileId)}
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function formatTransferStatus(item: TransferItem): string {
+  if (item.error !== undefined) {
+    return item.error;
+  }
+  if (item.status === "complete") {
+    return "Complete";
+  }
+  if (item.status === "failed") {
+    return "Failed";
+  }
+  if (item.status === "canceled") {
+    return "Canceled";
+  }
+  return `${Math.round(item.progress * 100)}%`;
+}
+
+function getConnectionLabel(
+  state: ClientSessionState,
+  canSendFiles: boolean,
+  hasChannelIssue: boolean,
+): string {
+  if (canSendFiles) {
+    return "Secure transfer ready";
+  }
+  if (hasChannelIssue) {
+    return "Connection needs retry";
+  }
+  if (state.dataChannel === "open") {
+    return "Securing transfer";
+  }
+  return "Opening direct connection";
+}
+
+function getChannelFootnote(
+  state: ClientSessionState,
+  canSendFiles: boolean,
+  hasChannelIssue: boolean,
+): string {
+  if (canSendFiles) {
+    return "Files move directly between these browsers.";
+  }
+  if (hasChannelIssue) {
+    return state.error ?? "The direct browser connection stopped.";
+  }
+  if (state.websocket !== "connected") {
+    return "Reconnecting pairing channel.";
+  }
+  return "Preparing secure transfer.";
 }
 
 async function fetchConfig(signal: AbortSignal) {
@@ -546,7 +829,9 @@ function clearStoredSessionContext(): void {
   }
 }
 
-function parseDataChannelControlMessage(value: string): { type: string } | undefined {
+function parseDataChannelControlMessage(
+  value: string,
+): { type: string; message?: string; publicKey?: JsonWebKey } | undefined {
   try {
     const parsed = JSON.parse(value) as unknown;
     if (
@@ -555,7 +840,15 @@ function parseDataChannelControlMessage(value: string): { type: string } | undef
       "type" in parsed &&
       typeof parsed.type === "string"
     ) {
-      return { type: parsed.type };
+      return {
+        type: parsed.type,
+        ...("message" in parsed && typeof parsed.message === "string"
+          ? { message: parsed.message }
+          : {}),
+        ...("publicKey" in parsed && isPublicJsonWebKey(parsed.publicKey)
+          ? { publicKey: parsed.publicKey }
+          : {}),
+      };
     }
   } catch {
     return undefined;
@@ -563,13 +856,40 @@ function parseDataChannelControlMessage(value: string): { type: string } | undef
   return undefined;
 }
 
-function isLocalDevelopment(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
+function isPublicJsonWebKey(value: unknown): value is JsonWebKey {
   return (
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname === "::1"
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "kty" in value &&
+    value.kty === "EC" &&
+    "crv" in value &&
+    value.crv === "P-256" &&
+    "x" in value &&
+    typeof value.x === "string" &&
+    "y" in value &&
+    typeof value.y === "string" &&
+    !("d" in value)
   );
+}
+
+function getCryptoUnavailableMessage(): string | undefined {
+  if (typeof window !== "undefined" && !window.isSecureContext) {
+    return "Encrypted transfer needs HTTPS. For local testing, open both tabs on localhost.";
+  }
+  if (globalThis.crypto?.subtle === undefined) {
+    return "Encrypted transfer is not available in this browser context. Open both tabs on HTTPS or localhost.";
+  }
+  return undefined;
+}
+
+function getCryptoErrorMessage(error: unknown): string {
+  const unavailableMessage = getCryptoUnavailableMessage();
+  if (unavailableMessage !== undefined) {
+    return unavailableMessage;
+  }
+  if (error instanceof Error && error.message.includes("Web Crypto subtle")) {
+    return "Encrypted transfer is not available in this browser context. Open both tabs on HTTPS or localhost.";
+  }
+  return error instanceof Error ? error.message : "Could not start encrypted transfer.";
 }

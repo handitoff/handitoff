@@ -295,6 +295,40 @@ a {
   font-size: 13px;
 }
 
+.progress-row--file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 58px;
+}
+
+.progress-row--file > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-actions {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.mini-action {
+  min-height: 32px;
+  border: 1px solid #0a0a0a;
+  background: #fafaf8;
+  color: #0a0a0a;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
 .drop-strip {
   margin-top: 48px;
   max-width: 480px;
@@ -498,18 +532,6 @@ a {
   text-decoration: none;
   color: inherit;
   min-height: 44px;
-}
-
-.l-chrome-status {
-  position: absolute;
-  top: 28px;
-  right: 32px;
-  font-size: 11px;
-  color: #888;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  z-index: 2;
-  line-height: 44px;
 }
 
 .l-chrome-bottom {
@@ -1015,10 +1037,6 @@ a {
 }
 
 @media (max-width: 560px) {
-  .l-chrome-status {
-    display: none;
-  }
-
   .el-section {
     padding: 64px 20px;
   }

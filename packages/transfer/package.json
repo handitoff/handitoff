@@ -13,5 +13,9 @@
     "build": "tsc -b",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@handitoff/crypto": "0.0.0",
+    "@handitoff/protocol": "0.0.0"
   }
 }
