@@ -719,7 +719,6 @@ export default function Session({ params }: Route.ComponentProps) {
 
 function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   const l = label.toLowerCase();
-  const isPhone = l.includes("iphone") || l.includes("android");
   const isTablet = l.includes("ipad");
   const isLaptop = l.includes("macbook") || (l.includes("mac") && !l.includes("android"));
   const isDesktop = l.includes("pc") || l.includes("windows") || l.includes("linux");
