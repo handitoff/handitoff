@@ -10,7 +10,10 @@ import {
 import type { Route } from "./+types/root";
 import appStylesHref from "./app.css?url";
 
-export const links: Route.LinksFunction = () => [{ rel: "stylesheet", href: appStylesHref }];
+export const links: Route.LinksFunction = () => [
+  { rel: "stylesheet", href: appStylesHref },
+  { rel: "icon", href: "/handitoff.png", type: "image/png" },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

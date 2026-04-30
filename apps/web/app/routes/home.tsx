@@ -269,11 +269,7 @@ function LHero() {
   return (
     <section className="l-hero" aria-label="Hero">
       <Link to="/" className="l-chrome-wm" aria-label="handitoff.io home">
-        <span className="wordmark-dots" aria-hidden="true">
-          <span className="wordmark-dot" />
-          <span className="wordmark-dot" />
-          <span className="wordmark-dot" />
-        </span>
+        <img src="/handitoff-light-transparent.png" alt="" aria-hidden="true" className="wordmark-logo" />
         <span className="wordmark-text">handitoff.io</span>
       </Link>
       <div className="l-chrome-bottom" aria-hidden="true">
@@ -283,7 +279,6 @@ function LHero() {
 
       <div className="l-hero-grid">
         <div className="l-type-stage">
-          <div className="l-kicker">№ 001 — A simpler way to move a file</div>
           <h1 className="display-title">
             Point. <em>Tap.</em>
             <br />
@@ -293,10 +288,6 @@ function LHero() {
             Scan the code with any phone. A peer-to-peer channel opens for the next ten minutes —
             files move directly between your devices and nowhere else.
           </p>
-          <div className="drop-strip" aria-label="File drop area">
-            <span>Drop files after pairing</span>
-            <span>{state.publicCode ?? "Waiting"}</span>
-          </div>
         </div>
         <div className="l-hero-rule" aria-hidden="true" />
         <aside className="l-qr-panel" aria-label="Scan to join">
@@ -371,12 +362,7 @@ function LHowItWorks() {
   return (
     <section className="el-section">
       <div className="el-container">
-        <div className="el-section-header">
-          <div>
-            <div className="el-section-meta">№ 002 — How it works</div>
-          </div>
-          <h2 className="el-section-title">The whole thing, end to end.</h2>
-        </div>
+        <h2 className="el-section-title">The whole thing, end to end.</h2>
         <div className="el-steps">
           {steps.map((s) => (
             <div key={s.n} className="el-step">
@@ -413,27 +399,17 @@ function LWhy() {
   return (
     <section className="el-section el-section--dark">
       <div className="el-container">
-        <div className="el-why-layout">
-          <div>
-            <div className="el-section-meta">№ 003 — The argument</div>
-            <p className="el-why-sub">
-              Three reasons we built this instead of using what already exists.
-            </p>
-          </div>
-          <div>
-            <h2 className="el-why-headline">
-              Moving a file shouldn&apos;t <em>require</em> a service that knows your name.
-            </h2>
-            <div className="el-why-reasons">
-              {reasons.map((r) => (
-                <div key={r.n} className="el-why-reason">
-                  <div className="el-why-reason-num">{r.n}</div>
-                  <div className="el-why-reason-title">{r.t}</div>
-                  <p className="el-why-reason-body">{r.d}</p>
-                </div>
-              ))}
+        <h2 className="el-why-headline">
+          Moving a file shouldn&apos;t <em>require</em> a service that knows your name.
+        </h2>
+        <div className="el-why-reasons">
+          {reasons.map((r) => (
+            <div key={r.n} className="el-why-reason">
+              <div className="el-why-reason-num">{r.n}</div>
+              <div className="el-why-reason-title">{r.t}</div>
+              <p className="el-why-reason-body">{r.d}</p>
             </div>
-          </div>
+          ))}
         </div>
       </div>
     </section>
@@ -444,7 +420,6 @@ function LQuote() {
   return (
     <section className="el-section">
       <div className="el-quote-inner">
-        <div className="el-quote-label">№ 004 — In practice</div>
         <p className="el-quote-text">
           &ldquo;It is the <em>shortest path</em> between two devices that I have ever used. I open
           the tab, I scan, the file is there. The whole thing took less time than reading this
@@ -483,14 +458,9 @@ function LPromises() {
   return (
     <section className="el-section">
       <div className="el-container">
-        <div className="el-section-header">
-          <div>
-            <div className="el-section-meta">№ 005 — Four promises</div>
-          </div>
-          <h2 className="el-section-title">
-            The <em>short</em> version.
-          </h2>
-        </div>
+        <h2 className="el-section-title">
+          The <em>short</em> version.
+        </h2>
         <div className="el-promises">
           {promises.map((p) => (
             <div key={p.n} className="el-promise">
@@ -532,12 +502,7 @@ function LFaq() {
   return (
     <section className="el-section">
       <div className="el-container">
-        <div className="el-section-header">
-          <div>
-            <div className="el-section-meta">№ 006 — Questions</div>
-          </div>
-          <h2 className="el-section-title">Things people ask.</h2>
-        </div>
+        <h2 className="el-section-title">Things people ask.</h2>
         <div className="el-faq-list">
           {items.map((it, i) => (
             <div key={i} className="el-faq-row">
@@ -555,60 +520,23 @@ function LFaq() {
 function LFooter() {
   return (
     <footer className="el-footer">
-      <div className="el-footer-inner">
-        <div className="el-footer-grid">
-          <div className="el-footer-brand">
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="wordmark-dots" aria-hidden="true">
-                <span className="wordmark-dot" style={{ background: "#fafaf8" }} />
-                <span className="wordmark-dot" style={{ background: "#fafaf8" }} />
-                <span className="wordmark-dot" style={{ background: "#fafaf8" }} />
-              </span>
-              <span className="wordmark-text">handitoff.io</span>
-            </div>
-            <p>A small instrument for moving files between two devices, made with patience.</p>
-          </div>
-          {[
-            {
-              h: "Product",
-              links: [
-                { label: "How it works", href: "#how-it-works" },
-                { label: "Specifications", href: "#specs" },
-              ],
-            },
-            {
-              h: "Trust",
-              links: [
-                { label: "Privacy", href: "/privacy", internal: true },
-                { label: "Security", href: "/security", internal: true },
-                { label: "Terms", href: "/terms", internal: true },
-              ],
-            },
-            {
-              h: "Contact",
-              links: [{ label: "Email", href: "mailto:hello@handitoff.io" }],
-            },
-          ].map((col) => (
-            <div key={col.h}>
-              <div className="el-footer-col-title">{col.h}</div>
-              <ul className="el-footer-links">
-                {col.links.map((lk) => (
-                  <li key={lk.label}>
-                    {"internal" in lk && lk.internal ? (
-                      <Link to={lk.href}>{lk.label}</Link>
-                    ) : (
-                      <a href={lk.href}>{lk.label}</a>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <div className="el-footer-bottom">
-          <span>© 2026 handitoff.io</span>
-          <span>Made on a quiet afternoon</span>
-        </div>
+      <div className="el-footer-statement" aria-hidden="true">
+        <span className="el-footer-line">Two devices.</span>
+        <span className="el-footer-line el-footer-line--dim">One file.</span>
+        <span className="el-footer-line el-footer-line--dim">Nothing left behind.</span>
+      </div>
+      <div className="el-footer-bar">
+        <Link to="/" className="el-footer-wm" aria-label="handitoff.io home">
+          <img src="/handitoff-dark-transparent.png" alt="" aria-hidden="true" className="wordmark-logo" />
+          <span className="wordmark-text">handitoff.io</span>
+        </Link>
+        <nav className="el-footer-nav" aria-label="Footer">
+          <Link to="/privacy">Privacy</Link>
+          <Link to="/security">Security</Link>
+          <Link to="/terms">Terms</Link>
+          <a href="mailto:hello@handitoff.io">Contact</a>
+        </nav>
+        <span className="el-footer-copy">© 2026</span>
       </div>
     </footer>
   );

@@ -77,16 +77,11 @@ a {
   min-height: 44px;
 }
 
-.wordmark-dots {
-  display: inline-flex;
-  gap: 5px;
-}
-
-.wordmark-dot {
-  width: 6px;
-  height: 6px;
-  background: #0a0a0a;
+.wordmark-logo {
+  height: 22px;
+  width: auto;
   display: block;
+  flex-shrink: 0;
 }
 
 .wordmark-text {
@@ -986,27 +981,11 @@ a {
 }
 
 .el-container {
-  max-width: 1216px;
-  margin: 0 auto;
-}
-
-.el-section-header {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 80px;
-  align-items: start;
-}
-
-.el-section-meta {
-  font-size: 11px;
-  color: #888;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-bottom: 16px;
+  width: 100%;
 }
 
 .el-section-title {
-  margin: 0;
+  margin: 0 0 64px;
   font-size: clamp(40px, 5vw, 64px);
   font-weight: 650;
   letter-spacing: -0.04em;
@@ -1024,7 +1003,6 @@ a {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border-top: 1px solid #e5e5e2;
-  margin-top: 64px;
 }
 
 .el-step {
@@ -1073,7 +1051,7 @@ a {
 }
 
 .el-why-headline {
-  margin: 0;
+  margin: 0 0 80px;
   font-size: clamp(40px, 5vw, 64px);
   font-weight: 650;
   letter-spacing: -0.04em;
@@ -1092,7 +1070,6 @@ a {
 .el-why-reasons {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  margin-top: 80px;
 }
 
 .el-why-reason {
@@ -1167,7 +1144,6 @@ a {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border-top: 1px solid #0a0a0a;
-  margin-top: 64px;
 }
 
 .el-promise {
@@ -1202,7 +1178,7 @@ a {
 }
 
 .el-faq-list {
-  margin-top: 64px;
+  margin-top: 0;
 }
 
 .el-faq-row {
@@ -1243,76 +1219,73 @@ a {
 .el-footer {
   background: #0a0a0a;
   color: #fafaf8;
-  padding: 80px 32px 40px;
+  padding: 64px 32px 40px;
 }
 
-.el-footer-inner {
-  max-width: 1216px;
-  margin: 0 auto;
+.el-footer-statement {
+  padding-bottom: 64px;
+  border-bottom: 1px solid #1c1c1c;
 }
 
-.el-footer-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-  gap: 32px;
-  padding-bottom: 80px;
-  border-bottom: 1px solid #2a2a2a;
-}
-
-.el-footer-brand p {
-  margin: 20px 0 0;
-  font-size: 13px;
-  color: #888;
-  line-height: 1.55;
-  letter-spacing: -0.005em;
-}
-
-.el-footer-col-title {
-  font-size: 11px;
-  color: #888;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.el-footer-links {
-  margin: 20px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.el-footer-links li a {
-  font-size: 14px;
+.el-footer-line {
+  display: block;
+  font-size: clamp(44px, 6vw, 96px);
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
   color: #fafaf8;
-  letter-spacing: -0.01em;
-  text-decoration: none;
 }
 
-.el-footer-links li a:hover {
-  opacity: 0.7;
+.el-footer-line--dim {
+  color: #2e2e2e;
 }
 
-.el-footer-bottom {
+.el-footer-bar {
   padding-top: 28px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  font-size: 11px;
-  color: #888;
-  letter-spacing: 0.06em;
+  gap: 24px;
+}
+
+.el-footer-wm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #fafaf8;
+  text-decoration: none;
+  min-height: 44px;
+}
+
+.el-footer-nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.el-footer-nav a {
+  color: #444;
+  text-decoration: none;
+  font-size: 12px;
   text-transform: uppercase;
+  letter-spacing: 0.07em;
+  transition: color 0.15s;
+}
+
+.el-footer-nav a:hover {
+  color: #fafaf8;
+}
+
+.el-footer-copy {
+  font-size: 12px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
 }
 
 @media (max-width: 1024px) {
-  .el-section-header {
-    grid-template-columns: 240px 1fr;
-    gap: 48px;
-  }
-
-  .el-why-layout {
-    grid-template-columns: 240px 1fr;
-    gap: 48px;
+  .el-footer-line {
+    font-size: clamp(40px, 7vw, 80px);
   }
 }
 
@@ -1349,13 +1322,9 @@ a {
     padding: 80px 24px;
   }
 
-  .el-section-header {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
   .el-section-title {
     font-size: clamp(36px, 8vw, 56px);
+    margin-bottom: 48px;
   }
 
   .el-steps {
@@ -1379,14 +1348,12 @@ a {
     margin-top: 48px;
   }
 
-  .el-why-layout {
-    grid-template-columns: 1fr;
-    gap: 40px;
+  .el-why-headline {
+    margin-bottom: 48px;
   }
 
   .el-why-reasons {
     grid-template-columns: 1fr;
-    margin-top: 40px;
   }
 
   .el-why-reason:last-child {
@@ -1419,12 +1386,16 @@ a {
     margin-top: 8px;
   }
 
-  .el-footer-grid {
-    grid-template-columns: 1fr 1fr;
+  .el-footer-bar {
+    flex-wrap: wrap;
+    gap: 16px;
   }
 
-  .el-footer-brand {
-    grid-column: 1 / -1;
+  .el-footer-nav {
+    gap: 20px;
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
@@ -1462,7 +1433,7 @@ a {
     font-size: 18px;
   }
 
-  .el-footer-grid {
-    grid-template-columns: 1fr;
+  .el-footer-line {
+    font-size: clamp(36px, 10vw, 60px);
   }
 }

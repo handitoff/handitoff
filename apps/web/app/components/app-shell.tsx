@@ -6,11 +6,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
     <div className="app-shell">
       <header className="chrome">
         <Link to="/" className="wordmark" aria-label="handitoff.io home">
-          <span className="wordmark-dots" aria-hidden="true">
-            <span className="wordmark-dot" />
-            <span className="wordmark-dot" />
-            <span className="wordmark-dot" />
-          </span>
+          <img src="/handitoff-light-transparent.png" alt="" aria-hidden="true" className="wordmark-logo" />
           <span className="wordmark-text">handitoff.io</span>
         </Link>
         <nav className="nav" aria-label="Primary">
