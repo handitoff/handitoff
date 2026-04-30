@@ -7,14 +7,18 @@ import { fileURLToPath } from "node:url";
 import { loadServerConfig } from "@handitoff/config";
 
 import { createApiApp } from "./app.js";
+import { RedisTcpClient } from "./redis-client.js";
 import { SignalingHub } from "./signaling.js";
-import { InMemorySessionStore } from "./session-store.js";
+import { InMemorySessionStore, RedisSessionStore } from "./session-store.js";
 import { handleWebSocketUpgrade } from "./websocket.js";
 
 export function createNodeServer() {
   loadRepoDotEnv();
   const config = loadServerConfig();
-  const store = new InMemorySessionStore();
+  const store =
+    config.redisUrl === undefined
+      ? new InMemorySessionStore()
+      : new RedisSessionStore(new RedisTcpClient(config.redisUrl));
   const hub = new SignalingHub({ config, store });
   const handler = createApiApp({
     config,

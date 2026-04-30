@@ -24,3 +24,20 @@ Start the core API locally:
 ```bash
 npm run start:api
 ```
+
+Start Redis for development with Docker Compose:
+
+```bash
+docker compose up redis
+```
+
+Start Redis, API, and web together:
+
+```bash
+docker compose up redis api web
+```
+
+Operational docs:
+
+- [Self-hosting and local development](docs/self-hosting.md)
+- [Production builds](docs/production-builds.md)
