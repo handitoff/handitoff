@@ -119,6 +119,311 @@ a {
   color: #0a0a0a;
 }
 
+/* ── Session transfer stage ── */
+
+.xfer-stage {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  height: calc(100svh - 72px);
+  overflow: hidden;
+}
+
+.xfer-hairline {
+  background: #e5e5e2;
+}
+
+.xfer-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.xfer-panel--receive {
+  background: #fff;
+}
+
+/* Panel header row */
+.xfer-panel-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 32px;
+  border-bottom: 1px solid #e5e5e2;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #73736f;
+}
+
+.xfer-panel-dir {
+  color: #0a0a0a;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+/* Send panel body */
+.xfer-send-body {
+  flex-shrink: 0;
+  padding: clamp(32px, 5vw, 60px) clamp(24px, 4vw, 48px) 28px 32px;
+}
+
+.xfer-send-title {
+  margin: 0;
+  font-size: clamp(44px, 6vw, 80px);
+  font-weight: 650;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+.xfer-send-sub {
+  margin: 20px 0 0;
+  color: #73736f;
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 380px;
+}
+
+.xfer-drop-strip {
+  margin-top: 24px;
+  border: 1px dashed #c5c5c2;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #73736f;
+  font-size: 13px;
+  max-width: 420px;
+}
+
+.xfer-drop-code {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.xfer-send-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+/* Device row in receive panel */
+.xfer-device-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 32px;
+  border-bottom: 1px solid #e5e5e2;
+}
+
+.xfer-device-svg {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.xfer-device-svg--tall {
+  width: 36px;
+  height: 64px;
+}
+
+.xfer-device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.xfer-device-name {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xfer-device-status {
+  font-size: 12px;
+  color: #73736f;
+}
+
+/* File list area — fills remaining panel height */
+.xfer-list-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid #e5e5e2;
+}
+
+.xfer-list-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 32px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #73736f;
+  border-bottom: 1px solid #e5e5e2;
+}
+
+.xfer-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.xfer-empty {
+  padding: 20px 32px;
+  color: #b0b0ac;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+}
+
+/* File rows */
+.xfer-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto auto;
+  align-items: center;
+  min-height: 52px;
+  padding: 10px 24px 10px 32px;
+  border-bottom: 1px solid #e5e5e2;
+  overflow: hidden;
+  gap: 0;
+}
+
+.xfer-row:last-child {
+  border-bottom: none;
+}
+
+.xfer-row-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #0a0a0a;
+  pointer-events: none;
+  transition: width 0.25s linear;
+}
+
+.xfer-row-index,
+.xfer-row-name,
+.xfer-row-meta,
+.xfer-row-status {
+  position: relative;
+  mix-blend-mode: difference;
+  color: #fff;
+}
+
+.xfer-row-index {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #888;
+  padding-right: 10px;
+}
+
+.xfer-row-name {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 12px;
+}
+
+.xfer-row-meta {
+  font-size: 12px;
+  color: #999;
+  white-space: nowrap;
+  padding-right: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.xfer-row-status {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.xfer-row-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 10px;
+}
+
+.xfer-action {
+  position: relative;
+  min-height: 28px;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  mix-blend-mode: difference;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 11px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.xfer-action--cancel {
+  font-size: 15px;
+  padding: 0 7px;
+  line-height: 1;
+}
+
+/* Panel footer */
+.xfer-panel-footer {
+  flex-shrink: 0;
+  padding: 14px 32px;
+  border-top: 1px solid #e5e5e2;
+  font-size: 11px;
+  color: #73736f;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.xfer-net-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.xfer-net-badge--local {
+  color: #0a0a0a;
+}
+
+.xfer-net-badge--relay {
+  color: #73736f;
+}
+
+/* ── Legacy classes (home page, join page) ── */
+
 .stage {
   flex: 1;
   display: grid;
@@ -479,6 +784,7 @@ a {
     gap: 10px;
   }
 
+  /* Legacy stage (home/join pages) */
   .stage {
     display: flex;
     flex-direction: column;
@@ -490,8 +796,7 @@ a {
   }
 
   .hero-panel {
-    padding: 56px 24px 40px;
-    min-height: 430px;
+    padding: 40px 24px 40px;
   }
 
   .side-panel {
@@ -506,6 +811,93 @@ a {
 
   .lede {
     font-size: 14px;
+  }
+
+  /* Transfer stage: stacked, auto height */
+  .xfer-stage {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .xfer-hairline {
+    height: 1px;
+  }
+
+  .xfer-panel {
+    overflow: visible;
+    min-height: 0;
+  }
+
+  .xfer-panel-header {
+    padding: 14px 20px;
+  }
+
+  .xfer-send-body {
+    padding: 28px 20px 20px;
+  }
+
+  .xfer-send-title {
+    font-size: 44px;
+  }
+
+  .xfer-drop-strip {
+    max-width: none;
+  }
+
+  .xfer-device-row {
+    padding: 20px;
+  }
+
+  .xfer-device-svg {
+    width: 36px;
+    height: 36px;
+  }
+
+  .xfer-device-svg--tall {
+    width: 28px;
+    height: 48px;
+  }
+
+  /* File list: fixed max height on mobile so it doesn't push the page forever */
+  .xfer-list-area {
+    flex: none;
+  }
+
+  .xfer-scroll {
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .xfer-list-header {
+    padding: 10px 20px;
+  }
+
+  .xfer-empty {
+    padding: 16px 20px;
+  }
+
+  .xfer-row {
+    padding: 8px 16px 8px 20px;
+    min-height: 48px;
+    grid-template-columns: 24px 1fr auto auto auto;
+  }
+
+  .xfer-row-index {
+    font-size: 10px;
+  }
+
+  .xfer-row-name {
+    font-size: 13px;
+  }
+
+  .xfer-row-meta {
+    display: none;
+  }
+
+  .xfer-panel-footer {
+    padding: 12px 20px;
   }
 }
 

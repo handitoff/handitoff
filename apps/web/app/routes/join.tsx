@@ -143,30 +143,29 @@ export default function Join({ params }: Route.ComponentProps) {
     };
   }, [navigate, params.code]);
 
-  const title =
-    state.connection === "error"
-      ? "No match."
-      : state.connection === "expired"
-        ? "Expired."
-        : state.connection === "rejected"
-          ? "Not this time."
-          : "Hold still...";
-  const body =
-    state.connection === "error" || state.connection === "rejected"
-      ? state.error
-      : state.connection === "expired"
-        ? "This code is no longer active. Start a new session on the other device."
-        : `Asking the desktop to open a private channel for code ${params.code.toUpperCase()}.`;
-  const status =
-    state.connection === "joining" || state.websocket === "connecting"
-      ? "Connecting"
+  const isTerminal =
+    state.connection === "error" ||
+    state.connection === "expired" ||
+    state.connection === "rejected";
+
+  const title = isTerminal
+    ? state.connection === "expired"
+      ? "Expired."
       : state.connection === "rejected"
-        ? "Rejected"
-        : state.connection === "expired"
-          ? "Expired"
-          : state.connection === "error"
-            ? "Could not join"
-            : "Waiting for approval";
+        ? "Not this time."
+        : "No match."
+    : "Hold still...";
+
+  const body = isTerminal
+    ? state.connection === "expired"
+      ? "This code is no longer active. Start a new session on the other device."
+      : (state.error ?? "Something went wrong.")
+    : `Asking ${params.code.toUpperCase()} to open a private channel.`;
+
+  const pendingStatus =
+    state.websocket === "connecting" || state.connection === "joining" || state.connection === "idle"
+      ? "Connecting"
+      : "Waiting for approval";
 
   return (
     <AppShell>
@@ -175,12 +174,12 @@ export default function Join({ params }: Route.ComponentProps) {
           <div className="section-label">No. 001 - Handshake</div>
           <h1 className="mobile-title">{title}</h1>
           <p>{body}</p>
-          <div className="status-line">
-            {state.connection === "joining" || state.connection === "idle" ? (
+          {!isTerminal && (
+            <div className="status-line">
               <span className="spinner" aria-hidden="true" />
-            ) : null}
-            <span>{status}</span>
-          </div>
+              <span>{pendingStatus}</span>
+            </div>
+          )}
         </div>
       </main>
     </AppShell>

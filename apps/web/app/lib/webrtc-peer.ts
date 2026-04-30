@@ -8,6 +8,7 @@ export type WebRtcPeerEvent =
   | { type: "data-channel-close" }
   | { type: "data-channel-error"; message: string }
   | { type: "data-channel-message"; data: unknown }
+  | { type: "network-type"; networkType: "local" | "relay" | "unknown" }
   | { type: "failed"; message: string };
 
 export type WebRtcPeerOptions = {
@@ -119,6 +120,7 @@ export class WebRtcPeer {
     channel.binaryType = "arraybuffer";
     channel.addEventListener("open", () => {
       this.options.onEvent({ type: "data-channel-open" });
+      void this.emitNetworkType();
     });
     channel.addEventListener("close", () => {
       this.options.onEvent({ type: "data-channel-close" });
@@ -154,6 +156,27 @@ export class WebRtcPeer {
         type: "failed",
         message: "The browser transfer could not connect directly.",
       });
+    }
+  }
+
+  private async emitNetworkType(): Promise<void> {
+    if (this.closed) return;
+    try {
+      const stats = await this.peerConnection.getStats();
+      for (const [, stat] of stats) {
+        const s = stat as { type: string; nominated?: boolean; localCandidateId?: string };
+        if (s.type === "candidate-pair" && s.nominated === true && s.localCandidateId !== undefined) {
+          const local = stats.get(s.localCandidateId) as { candidateType?: string } | undefined;
+          this.options.onEvent({
+            type: "network-type",
+            networkType: local?.candidateType === "relay" ? "relay" : "local",
+          });
+          return;
+        }
+      }
+      this.options.onEvent({ type: "network-type", networkType: "unknown" });
+    } catch {
+      this.options.onEvent({ type: "network-type", networkType: "unknown" });
     }
   }
 
