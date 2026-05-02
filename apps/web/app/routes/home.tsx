@@ -195,7 +195,20 @@ function LHero() {
         }
       });
 
+    const handleBeforeUnload = () => {
+      const current = stateRef.current;
+      if (current.sessionId !== undefined && current.deviceId !== undefined) {
+        socketRef.current?.send({
+          type: "session:end",
+          sessionId: current.sessionId,
+          deviceId: current.deviceId,
+        });
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       controller.abort();
       socketRef.current?.close();
       socketRef.current = undefined;

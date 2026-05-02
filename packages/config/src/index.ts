@@ -74,7 +74,7 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
 };
 
 const DEFAULT_RATE_LIMITS: ServerConfig["rateLimits"] = {
-  maxActiveSessionsPerIp: 5,
+  maxActiveSessionsPerIp: 50,
   maxJoinAttemptsPerPublicCode: 10,
   maxSignalingMessagesPerMinutePerSession: 300,
 };
