@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "@handitoff/config": "0.0.0",
-    "@handitoff/protocol": "0.0.0"
+    "@handitoff/protocol": "0.0.0",
+    "@handitoff/turn": "0.0.0",
+    "@handitoff/abuse": "0.0.0",
+    "@handitoff/analytics": "0.0.0"
   },
   "scripts": {
     "build": "tsc -b",

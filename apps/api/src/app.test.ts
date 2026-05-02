@@ -168,6 +168,33 @@ describe("api app", () => {
     expect((await app(new Request("http://localhost/api/sessions/ABC234"))).status).toBe(200);
     expect((await app(new Request("http://localhost/api/sessions/ABC234"))).status).toBe(429);
   });
+
+  it("returns ice servers from getIceServers hook when provided", async () => {
+    const dynamicIceServers = [
+      { urls: "stun:stun.example.com:19302" },
+      { urls: ["turn:turn.example.com:3478"], username: "user123", credential: "cred123" },
+    ];
+    const app = createApiApp({
+      config,
+      store: new InMemorySessionStore(),
+      getIceServers: () => dynamicIceServers,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const response = await app(new Request("http://localhost/api/config"));
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(body.iceServers).toEqual(dynamicIceServers);
+  });
+
+  it("returns static ice servers from config when no hook is provided", async () => {
+    const app = createTestApp();
+    const response = await app(new Request("http://localhost/api/config"));
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(body.iceServers).toEqual(config.publicConfig.iceServers);
+  });
 });
 
 function createTestApp(

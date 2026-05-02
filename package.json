@@ -17,7 +17,8 @@
     "dev:lan": "node scripts/dev-lan.mjs",
     "dev:web": "npm run dev -w @handitoff/web -- --host 0.0.0.0",
     "dev:api": "npm run dev -w @handitoff/api",
-    "start:api": "npm run build -w @handitoff/api && npm run start -w @handitoff/api"
+    "start:api": "npm run build -w @handitoff/api && npm run start -w @handitoff/api",
+    "start": "node apps/api/dist/server.js"
   },
   "engines": {
     "node": ">=20.11.0"

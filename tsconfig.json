@@ -5,6 +5,9 @@
     { "path": "./packages/protocol" },
     { "path": "./packages/crypto" },
     { "path": "./packages/transfer" },
+    { "path": "./packages/turn" },
+    { "path": "./packages/abuse" },
+    { "path": "./packages/analytics" },
     { "path": "./apps/api" }
   ]
 }

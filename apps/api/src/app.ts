@@ -1,6 +1,9 @@
-import type { PublicConfig, ServerConfig } from "@handitoff/config";
+import type { PublicConfig, PublicIceServer, ServerConfig } from "@handitoff/config";
 import { loadServerConfig } from "@handitoff/config";
 import { isPublicCode } from "@handitoff/protocol";
+import type { HostedAbuseLimits } from "@handitoff/abuse";
+import { evaluateAbuseSignal } from "@handitoff/abuse";
+import type { AnalyticsSink } from "@handitoff/analytics";
 
 import { FixedWindowRateLimiter } from "./rate-limits.js";
 import {
@@ -17,6 +20,9 @@ export type ApiAppOptions = {
   now?: () => number;
   onSessionExpired?: (sessionId: string, publicCode: string) => void;
   logger?: Pick<Console, "info" | "warn" | "error">;
+  getIceServers?: () => Promise<PublicIceServer[]> | PublicIceServer[];
+  analytics?: AnalyticsSink;
+  abuseLimits?: HostedAbuseLimits;
 };
 
 type ApiErrorCode =
@@ -45,6 +51,9 @@ export function createApiApp(options: ApiAppOptions = {}) {
   const rateLimiter = options.rateLimiter ?? new FixedWindowRateLimiter();
   const now = options.now ?? Date.now;
   const logger = options.logger ?? console;
+  const getIceServers = options.getIceServers;
+  const analytics = options.analytics;
+  const abuseLimits = options.abuseLimits;
 
   return async function handleRequest(request: Request): Promise<Response> {
     const requestId = getRequestId(request);
@@ -58,6 +67,7 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
       const expiredSessions = await store.sweepExpired(now());
       for (const session of expiredSessions) {
+        analytics?.record({ name: "session_expired" });
         options.onSessionExpired?.(session.id, session.publicCode);
       }
 
@@ -66,11 +76,16 @@ export function createApiApp(options: ApiAppOptions = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/api/config") {
-        return withCors(json(publicConfig(config.publicConfig), { requestId }), request);
+        const iceServers = getIceServers ? await getIceServers() : config.publicConfig.iceServers;
+        const resolvedConfig: PublicConfig = { ...config.publicConfig, iceServers };
+        return withCors(json(publicConfig(resolvedConfig), { requestId }), request);
       }
 
       if (request.method === "POST" && url.pathname === "/api/sessions") {
-        return withCors(await createSession(request, requestId, config, store), request);
+        return withCors(
+          await createSession(request, requestId, config, store, analytics, abuseLimits),
+          request,
+        );
       }
 
       const lookupMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
@@ -104,6 +119,8 @@ async function createSession(
   requestId: string,
   config: ServerConfig,
   store: SessionStore,
+  analytics: AnalyticsSink | undefined,
+  abuseLimits: HostedAbuseLimits | undefined,
 ): Promise<Response> {
   const body = await readJson<CreateSessionBody>(request, requestId);
   if (body instanceof Response) {
@@ -130,6 +147,21 @@ async function createSession(
     );
   }
 
+  if (abuseLimits !== undefined) {
+    const decision = evaluateAbuseSignal(
+      { ipAddress: ipKey, sessionCount: activeSessions, signalingMessagesPerMinute: 0 },
+      abuseLimits,
+    );
+    if (decision === "block") {
+      return errorResponse(
+        "rate_limited",
+        "Too many active sessions for this IP address.",
+        429,
+        requestId,
+      );
+    }
+  }
+
   const hostUserAgent = trimToLength(request.headers.get("user-agent") ?? undefined, 256);
   const createInput: CreateSessionInput = {
     hostDeviceId: body.hostDeviceId,
@@ -139,6 +171,7 @@ async function createSession(
     ...(hostUserAgent === undefined ? {} : { hostUserAgent }),
   };
   const session = await store.create(createInput);
+  analytics?.record({ name: "session_created" });
 
   return json(
     {

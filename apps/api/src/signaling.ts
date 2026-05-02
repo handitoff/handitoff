@@ -5,6 +5,7 @@ import {
   type ProtocolErrorCode,
   type ServerMessage,
 } from "@handitoff/protocol";
+import type { AnalyticsSink } from "@handitoff/analytics";
 
 import { FixedWindowRateLimiter } from "./rate-limits.js";
 import type { SessionStore, StoredSession } from "./session-store.js";
@@ -23,6 +24,7 @@ export type SignalingHubOptions = {
   rateLimiter?: FixedWindowRateLimiter;
   now?: () => number;
   heartbeatTimeoutMs?: number;
+  analytics?: AnalyticsSink;
 };
 
 type ConnectionState = {
@@ -52,6 +54,7 @@ export class SignalingHub {
   private readonly connections = new Map<string, ConnectionState>();
   private readonly connectionIdsByDevice = new Map<string, string>();
   private readonly pendingJoinsBySession = new Map<string, PendingJoin>();
+  private readonly analytics: AnalyticsSink | undefined;
 
   public constructor(options: SignalingHubOptions) {
     this.config = options.config;
@@ -61,6 +64,7 @@ export class SignalingHub {
       new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now });
     this.now = options.now ?? Date.now;
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 30_000;
+    this.analytics = options.analytics;
   }
 
   public addSocket(socket: SignalingSocket): void {
@@ -348,6 +352,7 @@ export class SignalingHub {
     guest.approved = true;
     guest.sessionId = message.sessionId;
     connection.approved = true;
+    this.analytics?.record({ name: "pair_approved" });
 
     guest.socket.send({
       type: "session:joined",
@@ -374,6 +379,7 @@ export class SignalingHub {
     }
 
     this.pendingJoinsBySession.delete(message.sessionId);
+    this.analytics?.record({ name: "pair_rejected" });
     await this.store.updateStatus(
       message.sessionId,
       "waiting",
@@ -479,6 +485,7 @@ export class SignalingHub {
       return;
     }
 
+    this.analytics?.record({ name: "session_ended" });
     this.sendToSession(message.sessionId, { type: "session:ended" });
     this.clearSessionConnections(message.sessionId);
   }

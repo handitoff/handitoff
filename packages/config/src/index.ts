@@ -33,6 +33,11 @@ export type ServerConfig = {
     maxJoinAttemptsPerPublicCode: number;
     maxSignalingMessagesPerMinutePerSession: number;
   };
+  turn?: {
+    secret: string;
+    urls: string[];
+    credentialTtlSeconds: number;
+  };
 };
 
 export type ConfigEnv = Record<string, string | undefined>;
@@ -128,6 +133,8 @@ export function loadPublicConfig(env: ConfigEnv = process.env): PublicConfig {
 
 export function loadServerConfig(env: ConfigEnv = process.env): ServerConfig {
   const redisUrl = emptyToUndefined(env.HANDITOFF_REDIS_URL);
+  const turnSecret = emptyToUndefined(env.HANDITOFF_TURN_SECRET);
+  const turnUrls = readStringArray(env, "HANDITOFF_TURN_URLS");
   const config: ServerConfig = {
     publicConfig: loadPublicConfig(env),
     rateLimits: {
@@ -151,6 +158,18 @@ export function loadServerConfig(env: ConfigEnv = process.env): ServerConfig {
 
   if (redisUrl !== undefined) {
     config.redisUrl = redisUrl;
+  }
+
+  if (turnSecret !== undefined && turnUrls.length > 0) {
+    config.turn = {
+      secret: turnSecret,
+      urls: turnUrls,
+      credentialTtlSeconds: readPositiveInteger(
+        env,
+        "HANDITOFF_TURN_CREDENTIAL_TTL_SECONDS",
+        600,
+      ),
+    };
   }
 
   return config;
@@ -183,6 +202,17 @@ export function assertValidPublicConfig(config: PublicConfig): void {
   if (issues.length > 0) {
     throw new ConfigError(issues);
   }
+}
+
+function readStringArray(env: ConfigEnv, key: string): string[] {
+  const value = emptyToUndefined(env[key]);
+  if (value === undefined) {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s !== "");
 }
 
 function readString(env: ConfigEnv, key: string, fallback: string): string {

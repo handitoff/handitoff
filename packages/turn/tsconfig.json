@@ -6,12 +6,5 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
-  "references": [
-    { "path": "../../packages/config" },
-    { "path": "../../packages/protocol" },
-    { "path": "../../packages/turn" },
-    { "path": "../../packages/abuse" },
-    { "path": "../../packages/analytics" }
-  ],
   "include": ["src/**/*.ts", "src/**/*.test.ts"]
 }
