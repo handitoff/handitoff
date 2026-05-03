@@ -17,6 +17,7 @@
     "@handitoff/analytics": "0.0.0"
   },
   "scripts": {
+    "prebuild": "npm run build -w @handitoff/protocol && npm run build -w @handitoff/config && npm run build -w @handitoff/turn && npm run build -w @handitoff/abuse && npm run build -w @handitoff/analytics",
     "build": "tsc -b",
     "dev": "concurrently \"tsc -b --watch --preserveWatchOutput\" \"node --watch dist/server.js\" --names \"tsc,api\" --prefix-colors \"bgGreen.bold,bgCyan.bold\"",
     "start": "node dist/server.js",

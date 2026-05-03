@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prebuild": "npm run build -w @handitoff/protocol && npm run build -w @handitoff/config && npm run build -w @handitoff/crypto && npm run build -w @handitoff/transfer",
     "build": "react-router build",
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
