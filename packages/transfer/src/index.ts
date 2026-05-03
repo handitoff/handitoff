@@ -16,7 +16,7 @@ import {
   type TransferMessage,
 } from "@handitoff/protocol";
 
-export const DEFAULT_CHUNK_SIZE_BYTES = 256 * 1024;
+export const DEFAULT_CHUNK_SIZE_BYTES = 128 * 1024;
 export const DEFAULT_BUFFERED_AMOUNT_LOW_THRESHOLD_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_BUFFERED_AMOUNT_PAUSE_THRESHOLD_BYTES = 16 * 1024 * 1024;
 export const DEFAULT_MAX_HASHABLE_FILE_BYTES = 512 * 1024 * 1024;
@@ -345,16 +345,7 @@ export class BrowserTransferController {
         this.handleCancel(message);
         break;
       case "transfer:error":
-        this.emitError({
-          transferId: message.transferId,
-          direction: "incoming",
-          status: "failed",
-          bytesTransferred: 0,
-          totalBytes: 0,
-          progress: 0,
-          error: message.message,
-          ...(message.fileId === undefined ? {} : { fileId: message.fileId }),
-        });
+        this.emitPeerTransferError(message.transferId, message.message, message.fileId);
         break;
     }
   }
@@ -664,15 +655,6 @@ export class BrowserTransferController {
     const message = normalizeTransferError(error);
     const pending = findActiveIncomingFile(this.incoming);
     if (pending === undefined) {
-      this.emitError({
-        transferId: "incoming-transfer",
-        direction: "incoming",
-        status: "failed",
-        bytesTransferred: 0,
-        totalBytes: 0,
-        progress: 0,
-        error: message,
-      });
       return;
     }
     const { transfer, file } = pending;
@@ -688,6 +670,31 @@ export class BrowserTransferController {
       name: file.metadata.name,
       error: message,
     });
+  }
+
+  private emitPeerTransferError(transferId: string, message: string, fileId?: string): void {
+    const transfer = this.incoming.get(transferId);
+    if (transfer === undefined) {
+      return;
+    }
+    const files =
+      fileId === undefined
+        ? Array.from(transfer.files.values())
+        : [transfer.files.get(fileId)].filter((file): file is IncomingFile => file !== undefined);
+    for (const file of files) {
+      file.status = "failed";
+      this.emitError({
+        transferId,
+        fileId: file.metadata.fileId,
+        direction: "incoming",
+        status: "failed",
+        bytesTransferred: file.receivedBytes,
+        totalBytes: file.metadata.size,
+        progress: calculateProgress(file.receivedBytes, file.metadata.size),
+        name: file.metadata.name,
+        error: message,
+      });
+    }
   }
 }
 

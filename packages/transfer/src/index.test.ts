@@ -71,7 +71,7 @@ describe("@handitoff/transfer", () => {
   });
 
   it("calculates chunk ranges and progress", () => {
-    expect(DEFAULT_CHUNK_SIZE_BYTES).toBe(256 * 1024);
+    expect(DEFAULT_CHUNK_SIZE_BYTES).toBe(128 * 1024);
     expect(calculateChunkCount(0)).toBe(1);
     expect(calculateChunkCount(DEFAULT_CHUNK_SIZE_BYTES + 1)).toBe(2);
     expect(getChunkRange(10, 1, 6)).toEqual({ offset: 6, end: 10, size: 4 });
@@ -253,6 +253,65 @@ describe("@handitoff/transfer", () => {
       status: "failed",
       name: "a.txt",
       error: "Encrypted chunk size does not match its header.",
+    });
+  });
+
+  it("does not create a synthetic file row for malformed transfer messages", async () => {
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const channel = new FakeChannel();
+    const errors: TransferProgressSnapshot[] = [];
+    const receiver = new BrowserTransferController({
+      channel,
+      key,
+      events: { onError: (snapshot) => errors.push(snapshot) },
+    });
+
+    await expect(
+      receiver.handleData(JSON.stringify({ type: "file:offer", transferId: "bad", files: [] })),
+    ).rejects.toThrow("totalSize");
+    expect(errors).toHaveLength(0);
+  });
+
+  it("applies peer transfer errors to existing incoming file rows", async () => {
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const channel = new FakeChannel();
+    const errors: TransferProgressSnapshot[] = [];
+    const receiver = new BrowserTransferController({
+      channel,
+      key,
+      events: { onError: (snapshot) => errors.push(snapshot) },
+    });
+
+    await receiver.handleData(
+      JSON.stringify({
+        type: "file:offer",
+        transferId: "transfer-1",
+        files: [{ fileId: "file-1", name: "a.txt", size: 1, mimeType: "text/plain" }],
+        totalSize: 1,
+      }),
+    );
+    await receiver.handleData(
+      JSON.stringify({
+        type: "transfer:error",
+        transferId: "transfer-1",
+        code: "transfer_failed",
+        message: "Sender lost the data channel.",
+      }),
+    );
+
+    expect(errors[errors.length - 1]).toMatchObject({
+      transferId: "transfer-1",
+      fileId: "file-1",
+      direction: "incoming",
+      status: "failed",
+      name: "a.txt",
+      error: "Sender lost the data channel.",
     });
   });
 
