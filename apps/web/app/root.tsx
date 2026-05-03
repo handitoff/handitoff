@@ -9,6 +9,7 @@ import {
 
 import type { Route } from "./+types/root";
 import appStylesHref from "./app.css?url";
+import { publicRuntimeConfigScript } from "./lib/runtime-config";
 
 export const links: Route.LinksFunction = () => [
   { rel: "stylesheet", href: appStylesHref },
@@ -26,6 +27,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: publicRuntimeConfigScript(),
+          }}
+        />
         <ScrollRestoration />
         <Scripts />
       </body>

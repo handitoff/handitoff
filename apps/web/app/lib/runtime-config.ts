@@ -1,16 +1,27 @@
-import type { PublicConfig } from "@handitoff/protocol";
+import { loadPublicConfig, type PublicConfig } from "@handitoff/config";
 
 function defaultPublicConfig(): PublicConfig {
   const browserOrigin = typeof window === "undefined" ? undefined : window.location.origin;
   const browserProtocol = typeof window === "undefined" ? "http:" : window.location.protocol;
-  const browserHost = typeof window === "undefined" ? "localhost" : window.location.hostname;
-  const apiProtocol = browserProtocol === "https:" ? "https:" : "http:";
-  const wsProtocol = browserProtocol === "https:" ? "wss:" : "ws:";
+  const browserHost =
+    typeof window === "undefined"
+      ? undefined
+      : window.location.port === ""
+        ? window.location.hostname
+        : window.location.host;
+  const sameOriginApiUrl =
+    browserHost === undefined
+      ? "http://localhost:8787"
+      : `${browserProtocol === "https:" ? "https:" : "http:"}//${browserHost}`;
+  const sameOriginWsUrl =
+    browserHost === undefined
+      ? "ws://localhost:8787/ws"
+      : `${browserProtocol === "https:" ? "wss:" : "ws:"}//${browserHost}/ws`;
 
   return {
     appUrl: browserOrigin ?? "http://localhost:5173",
-    apiUrl: `${apiProtocol}//${browserHost}:8787`,
-    wsUrl: `${wsProtocol}//${browserHost}:8787/ws`,
+    apiUrl: sameOriginApiUrl,
+    wsUrl: sameOriginWsUrl,
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     billing: { enabled: false },
     limits: {
@@ -27,24 +38,7 @@ function defaultPublicConfig(): PublicConfig {
   };
 }
 
-const SERVER_DEFAULT_PUBLIC_CONFIG: PublicConfig = {
-  appUrl: "http://localhost:5173",
-  apiUrl: "http://localhost:8787",
-  wsUrl: "ws://localhost:8787/ws",
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  billing: { enabled: false },
-  limits: {
-    unpairedSessionTtlSeconds: 600,
-    pairedSessionTtlSeconds: 1800,
-    maxFilesPerTransfer: 100,
-    maxRecommendedFileSizeBytes: 2 * 1024 * 1024 * 1024,
-  },
-  features: {
-    turnEnabled: false,
-    multiDeviceRooms: false,
-    accounts: false,
-  },
-};
+const SERVER_DEFAULT_PUBLIC_CONFIG: PublicConfig = loadPublicConfig();
 
 declare global {
   interface Window {
@@ -74,4 +68,8 @@ export function loadPublicRuntimeConfig(overrides?: Partial<PublicConfig>): Publ
       ...runtimeOverrides?.features,
     },
   };
+}
+
+export function publicRuntimeConfigScript(config = loadPublicRuntimeConfig()): string {
+  return `window.__HANDITOFF_PUBLIC_CONFIG__=${JSON.stringify(config).replaceAll("<", "\\u003c")};`;
 }
