@@ -393,30 +393,29 @@ export class BrowserTransferController {
     }
     transfer.accepted = true;
     transfer.started = true;
-    try {
-      for (const [index, file] of transfer.files.entries()) {
-        const metadata = transfer.metadata[index];
-        if (metadata === undefined) {
-          throw new Error("File metadata is missing.");
-        }
-        await this.sendOneFile(transfer, file, metadata);
+    for (const [index, file] of transfer.files.entries()) {
+      const metadata = transfer.metadata[index];
+      if (metadata === undefined) {
+        this.emitOutgoingFileError(transfer, undefined, "File metadata is missing.");
+        continue;
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Transfer failed.";
       try {
-        this.sendJson({ type: "transfer:error", transferId, code: "transfer_failed", message });
-      } catch {
-        // The local UI still needs the original transfer failure even if the peer channel is gone.
+        await this.sendOneFile(transfer, file, metadata);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Transfer failed.";
+        try {
+          this.sendJson({
+            type: "transfer:error",
+            transferId,
+            fileId: metadata.fileId,
+            code: "transfer_failed",
+            message,
+          });
+        } catch {
+          // The local UI still needs the original transfer failure even if the peer channel is gone.
+        }
+        this.emitOutgoingFileError(transfer, metadata, message);
       }
-      this.emitError({
-        transferId,
-        direction: "outgoing",
-        status: "failed",
-        bytesTransferred: 0,
-        totalBytes: transfer.metadata.reduce((sum, file) => sum + file.size, 0),
-        progress: 0,
-        error: message,
-      });
     }
   }
 
@@ -649,6 +648,28 @@ export class BrowserTransferController {
   private emitError(snapshot: TransferProgressSnapshot): void {
     this.options.events?.onError?.(snapshot);
     this.options.events?.onProgress?.(snapshot);
+  }
+
+  private emitOutgoingFileError(
+    transfer: OutgoingTransfer,
+    metadata: FileOfferItem | undefined,
+    message: string,
+  ): void {
+    this.emitError({
+      transferId: transfer.transferId,
+      direction: "outgoing",
+      status: "failed",
+      bytesTransferred: 0,
+      totalBytes: metadata?.size ?? 0,
+      progress: 0,
+      error: message,
+      ...(metadata === undefined
+        ? {}
+        : {
+            fileId: metadata.fileId,
+            name: metadata.name,
+          }),
+    });
   }
 
   private emitIncomingFailure(error: unknown): void {

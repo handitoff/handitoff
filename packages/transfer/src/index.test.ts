@@ -315,6 +315,41 @@ describe("@handitoff/transfer", () => {
     });
   });
 
+  it("reports oversized outgoing files on the original file row", async () => {
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const senderChannel = new FakeChannel();
+    const receiverChannel = new FakeChannel();
+    senderChannel.connect(receiverChannel);
+    receiverChannel.connect(senderChannel);
+    const errors: TransferProgressSnapshot[] = [];
+    const sender = new BrowserTransferController({
+      channel: senderChannel,
+      key,
+      events: { onError: (snapshot) => errors.push(snapshot) },
+    });
+    const receiver = new BrowserTransferController({ channel: receiverChannel, key });
+    receiverChannel.onData = (data) => void receiver.handleData(data);
+    senderChannel.onData = (data) => void sender.handleData(data);
+
+    sender.sendFiles([new File(["too-large"], "video.mp4")], { maxHashableFileBytes: 1 });
+
+    await vi.waitFor(() => {
+      expect(errors.some((snapshot) => snapshot.status === "failed")).toBe(true);
+    });
+    const failed = errors.find((snapshot) => snapshot.status === "failed");
+    expect(failed).toMatchObject({
+      direction: "outgoing",
+      status: "failed",
+      name: "video.mp4",
+      totalBytes: 9,
+    });
+    expect(failed?.fileId).toBeDefined();
+    expect(failed?.error).toContain("too large");
+  });
+
   it("cancels before encrypted sending continues", async () => {
     const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
       "encrypt",
