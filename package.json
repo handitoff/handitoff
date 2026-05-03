@@ -8,7 +8,11 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build:packages && npm run build:apps",
+    "build:packages": "npm run build -w @handitoff/protocol && npm run build -w @handitoff/config && npm run build -w @handitoff/crypto && npm run build -w @handitoff/transfer && npm run build -w @handitoff/turn && npm run build -w @handitoff/abuse && npm run build -w @handitoff/analytics",
+    "build:apps": "npm run build -w @handitoff/api && npm run build -w @handitoff/web",
+    "build:api": "npm run build:packages && npm run build -w @handitoff/api",
+    "build:web": "npm run build:packages && npm run build -w @handitoff/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "test": "npm run test --workspaces --if-present",
