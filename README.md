@@ -41,3 +41,4 @@ Operational docs:
 
 - [Self-hosting and local development](docs/self-hosting.md)
 - [Production builds](docs/production-builds.md)
+- [Manual device test checklist](docs/manual-device-test-checklist.md)

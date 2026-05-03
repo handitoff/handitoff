@@ -438,6 +438,9 @@ export class SignalingHub {
       this.sendError(connection, "peer_not_approved", "Peer must be approved before signaling.");
       return;
     }
+    if (!this.checkSignalingRate(connection, message.sessionId)) {
+      return;
+    }
 
     const targetDeviceId =
       message.fromDeviceId === session.hostDeviceId ? session.guestDeviceId : session.hostDeviceId;
@@ -622,6 +625,19 @@ export class SignalingHub {
 
   private sendError(connection: ConnectionState, code: ProtocolErrorCode, message: string): void {
     connection.socket.send({ type: "error", code, message });
+  }
+
+  private checkSignalingRate(connection: ConnectionState, sessionId: string): boolean {
+    const limit = this.rateLimiter.hit(
+      `ws:signal:${sessionId}`,
+      this.config.rateLimits.maxSignalingMessagesPerMinutePerSession,
+      60_000,
+    );
+    if (!limit.allowed) {
+      this.sendError(connection, "rate_limited", "Too many signaling messages for this session.");
+      return false;
+    }
+    return true;
   }
 }
 

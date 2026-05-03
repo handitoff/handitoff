@@ -61,7 +61,7 @@ describe("loadServerConfig", () => {
   it("loads default rate limits", () => {
     const config = loadServerConfig({});
 
-    expect(config.rateLimits.maxActiveSessionsPerIp).toBe(5);
+    expect(config.rateLimits.maxActiveSessionsPerIp).toBe(50);
     expect(config.rateLimits.maxJoinAttemptsPerPublicCode).toBe(10);
     expect(config.rateLimits.maxSignalingMessagesPerMinutePerSession).toBe(300);
   });

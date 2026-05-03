@@ -367,10 +367,43 @@ describe("signaling hub", () => {
     await flush();
     expect(last(guest)).toMatchObject({ type: "error", code: "session_ended" });
   });
+
+  it("rate limits WebRTC relay messages per session", async () => {
+    const { hub } = createHarness({
+      rateLimits: {
+        maxActiveSessionsPerIp: 50,
+        maxJoinAttemptsPerPublicCode: 2,
+        maxSignalingMessagesPerMinutePerSession: 1,
+      },
+    });
+    const { guest } = await createApprovedPair(hub);
+
+    guest.receiveJson({
+      type: "webrtc:offer",
+      sessionId: "session-1",
+      fromDeviceId: "guest-1",
+      sdp: { type: "offer", sdp: "one" },
+    });
+    await flush();
+    guest.receiveJson({
+      type: "webrtc:ice-candidate",
+      sessionId: "session-1",
+      fromDeviceId: "guest-1",
+      candidate: { candidate: "two" },
+    });
+    await flush();
+
+    expect(last(guest)).toMatchObject({ type: "error", code: "rate_limited" });
+  });
 });
 
 function createHarness(
-  options: { now?: () => number; codes?: string[]; heartbeatTimeoutMs?: number } = {},
+  options: {
+    now?: () => number;
+    codes?: string[];
+    heartbeatTimeoutMs?: number;
+    rateLimits?: ServerConfig["rateLimits"];
+  } = {},
 ) {
   let id = 0;
   const codes = [...(options.codes ?? ["ABC234", "DEF345", "GHJ456"])];
@@ -380,7 +413,8 @@ function createHarness(
     ...(options.now === undefined ? {} : { now: options.now }),
   });
   const hub = new SignalingHub({
-    config,
+    config:
+      options.rateLimits === undefined ? config : { ...config, rateLimits: options.rateLimits },
     store,
     rateLimiter: new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now }),
     ...(options.now === undefined ? {} : { now: options.now }),
