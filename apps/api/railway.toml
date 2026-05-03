@@ -1,6 +1,6 @@
 [build]
 builder = "RAILPACK"
-buildCommand = "npm ci && npm run build"
+buildCommand = "npm run build:api"
 watchPatterns = ["apps/api/**", "packages/**", "package.json", "package-lock.json", "tsconfig.json"]
 
 [deploy]
