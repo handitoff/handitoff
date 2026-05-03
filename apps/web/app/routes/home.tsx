@@ -10,17 +10,16 @@ import {
   type ClientSessionState,
 } from "../lib/session-store";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
+import { seoMeta } from "../lib/seo";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
 
 export function meta() {
-  return [
-    { title: "handitoff.io" },
-    {
-      name: "description",
-      content:
-        "Scan with any phone. A peer-to-peer channel opens for ten minutes — files move directly between your devices and nowhere else.",
-    },
-  ];
+  return seoMeta({
+    title: "handitoff.io - AirDrop, but in your browser",
+    description:
+      "Scan with any phone. A peer-to-peer channel opens for ten minutes and files move directly between your devices.",
+    path: "/",
+  });
 }
 
 export default function Home() {
@@ -283,7 +282,12 @@ function LHero() {
   return (
     <section className="l-hero" aria-label="Hero">
       <Link to="/" className="l-chrome-wm" aria-label="handitoff.io home">
-        <img src="/handitoff-light-transparent.png" alt="" aria-hidden="true" className="wordmark-logo" />
+        <img
+          src="/handitoff-light-transparent.png"
+          alt=""
+          aria-hidden="true"
+          className="wordmark-logo"
+        />
         <span className="wordmark-text">handitoff.io</span>
       </Link>
       <div className="l-chrome-bottom" aria-hidden="true">
@@ -530,4 +534,3 @@ function LFaq() {
     </section>
   );
 }
-

@@ -6,10 +6,16 @@ import { HanditoffApiClient, ApiClientError } from "../lib/api-client";
 import { getBrowserDeviceIdentity } from "../lib/device";
 import { initialClientSessionState, reduceClientSessionState } from "../lib/session-store";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
+import { seoMeta } from "../lib/seo";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
 
 export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Join ${params.code} - handitoff.io` }];
+  return seoMeta({
+    title: `Join ${params.code} - handitoff.io`,
+    description: "Join a temporary handitoff.io browser file handoff session.",
+    path: `/join/${params.code}`,
+    noIndex: true,
+  });
 }
 
 export default function Join({ params }: Route.ComponentProps) {
@@ -163,7 +169,9 @@ export default function Join({ params }: Route.ComponentProps) {
     : `Asking ${params.code.toUpperCase()} to open a private channel.`;
 
   const pendingStatus =
-    state.websocket === "connecting" || state.connection === "joining" || state.connection === "idle"
+    state.websocket === "connecting" ||
+    state.connection === "joining" ||
+    state.connection === "idle"
       ? "Connecting"
       : "Waiting for approval";
 

@@ -1,8 +1,14 @@
 import { AppShell } from "../components/app-shell";
 import { SiteFooter } from "../components/site-footer";
+import { seoMeta } from "../lib/seo";
 
 export function meta() {
-  return [{ title: "Privacy - handitoff.io" }];
+  return seoMeta({
+    title: "Privacy - handitoff.io",
+    description:
+      "How handitoff.io handles temporary sessions, pairing metadata, device labels, and file-transfer privacy.",
+    path: "/privacy",
+  });
 }
 
 export default function Privacy() {
@@ -13,8 +19,8 @@ export default function Privacy() {
           <p className="lp-tag">Privacy</p>
           <h1 className="lp-title">No permanent profile.</h1>
           <p className="lp-lead">
-            handitoff.io is built around temporary sessions. There is nothing to log in to,
-            nothing to store, and nothing to delete when you are done.
+            handitoff.io is built around temporary sessions. There is nothing to log in to, nothing
+            to store, and nothing to delete when you are done.
           </p>
         </section>
 
@@ -69,8 +75,7 @@ export default function Privacy() {
             <div className="lp-body">
               <h2 className="lp-heading">Questions</h2>
               <p>
-                Reach us at{" "}
-                <a href="mailto:hello@handitoff.io">hello@handitoff.io</a>.
+                Reach us at <a href="mailto:hello@handitoff.io">hello@handitoff.io</a>.
               </p>
             </div>
           </div>

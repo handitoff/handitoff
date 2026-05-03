@@ -17,6 +17,7 @@ import {
   type TransferItem,
 } from "../lib/session-store";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
+import { seoMeta } from "../lib/seo";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
 import { WebRtcPeer, type WebRtcPeerEvent } from "../lib/webrtc-peer";
 
@@ -31,7 +32,12 @@ type StoredSessionContext = {
 };
 
 export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Session ${params.code} - handitoff.io` }];
+  return seoMeta({
+    title: `Session ${params.code} - handitoff.io`,
+    description: "Temporary handitoff.io browser file handoff session.",
+    path: `/s/${params.code}`,
+    noIndex: true,
+  });
 }
 
 export default function Session({ params }: Route.ComponentProps) {
@@ -637,7 +643,9 @@ export default function Session({ params }: Route.ComponentProps) {
             <div className="xfer-list-header">
               <span>Outbound</span>
               {outgoingTransfers.length > 0 ? (
-                <span>{outgoingTransfers.length} {outgoingTransfers.length === 1 ? "file" : "files"}</span>
+                <span>
+                  {outgoingTransfers.length} {outgoingTransfers.length === 1 ? "file" : "files"}
+                </span>
               ) : null}
             </div>
             <div className="xfer-scroll">
@@ -683,7 +691,9 @@ export default function Session({ params }: Route.ComponentProps) {
             <div className="xfer-list-header">
               <span>Inbound</span>
               {incomingTransfers.length > 0 ? (
-                <span>{incomingTransfers.length} {incomingTransfers.length === 1 ? "file" : "files"}</span>
+                <span>
+                  {incomingTransfers.length} {incomingTransfers.length === 1 ? "file" : "files"}
+                </span>
               ) : null}
             </div>
             <div className="xfer-scroll">
@@ -725,7 +735,13 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
 
   const stroke = "#0a0a0a";
   const sw = "1.5";
-  const common = { fill: "none", stroke, strokeWidth: sw, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const common = {
+    fill: "none",
+    stroke,
+    strokeWidth: sw,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
 
   if (isLaptop) {
     return (
@@ -735,7 +751,17 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
         {/* camera dot */}
         <circle cx="28" cy="7" r="1.5" fill={stroke} stroke="none" />
         {/* status in screen */}
-        <text x="28" y="25" textAnchor="middle" fontSize="12" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
+        <text
+          x="28"
+          y="25"
+          textAnchor="middle"
+          fontSize="12"
+          fill={stroke}
+          stroke="none"
+          fontFamily="system-ui"
+        >
+          {ready ? "✓" : "…"}
+        </text>
         {/* hinge */}
         <line x1="0" y1="38" x2="56" y2="38" />
         {/* base */}
@@ -752,7 +778,17 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
         {/* monitor */}
         <rect x="2" y="2" width="52" height="36" rx="3" />
         {/* status */}
-        <text x="28" y="24" textAnchor="middle" fontSize="12" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
+        <text
+          x="28"
+          y="24"
+          textAnchor="middle"
+          fontSize="12"
+          fill={stroke}
+          stroke="none"
+          fontFamily="system-ui"
+        >
+          {ready ? "✓" : "…"}
+        </text>
         {/* stand neck */}
         <line x1="28" y1="38" x2="28" y2="48" />
         {/* stand base */}
@@ -764,7 +800,12 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
 
   if (isTablet) {
     return (
-      <svg className="xfer-device-svg xfer-device-svg--tall" viewBox="0 0 44 68" aria-hidden="true" {...common}>
+      <svg
+        className="xfer-device-svg xfer-device-svg--tall"
+        viewBox="0 0 44 68"
+        aria-hidden="true"
+        {...common}
+      >
         {/* body */}
         <rect x="3" y="2" width="38" height="64" rx="5" />
         {/* camera */}
@@ -772,14 +813,29 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
         {/* home button */}
         <circle cx="22" cy="60" r="3" />
         {/* status */}
-        <text x="22" y="38" textAnchor="middle" fontSize="11" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
+        <text
+          x="22"
+          y="38"
+          textAnchor="middle"
+          fontSize="11"
+          fill={stroke}
+          stroke="none"
+          fontFamily="system-ui"
+        >
+          {ready ? "✓" : "…"}
+        </text>
       </svg>
     );
   }
 
   // Phone (iPhone, Android, Unknown)
   return (
-    <svg className="xfer-device-svg xfer-device-svg--tall" viewBox="0 0 36 68" aria-hidden="true" {...common}>
+    <svg
+      className="xfer-device-svg xfer-device-svg--tall"
+      viewBox="0 0 36 68"
+      aria-hidden="true"
+      {...common}
+    >
       {/* body */}
       <rect x="2" y="2" width="32" height="64" rx="7" />
       {/* speaker */}
@@ -787,7 +843,17 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
       {/* home bar */}
       <rect x="11" y="57" width="14" height="3" rx="1.5" fill={stroke} stroke="none" />
       {/* status */}
-      <text x="18" y="38" textAnchor="middle" fontSize="11" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
+      <text
+        x="18"
+        y="38"
+        textAnchor="middle"
+        fontSize="11"
+        fill={stroke}
+        stroke="none"
+        fontFamily="system-ui"
+      >
+        {ready ? "✓" : "…"}
+      </text>
     </svg>
   );
 }
