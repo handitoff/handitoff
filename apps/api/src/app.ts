@@ -65,14 +65,14 @@ export function createApiApp(options: ApiAppOptions = {}) {
         return withCors(new Response(null, { status: 204 }), request);
       }
 
+      if (request.method === "GET" && url.pathname === "/api/health") {
+        return withCors(json({ status: "ok", requestId }, { requestId }), request);
+      }
+
       const expiredSessions = await store.sweepExpired(now());
       for (const session of expiredSessions) {
         analytics?.record({ name: "session_expired" });
         options.onSessionExpired?.(session.id, session.publicCode);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/health") {
-        return withCors(json({ status: "ok", requestId }, { requestId }), request);
       }
 
       if (request.method === "GET" && url.pathname === "/api/config") {

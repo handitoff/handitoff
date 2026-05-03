@@ -1,4 +1,5 @@
 import { Socket } from "node:net";
+import { connect as connectTls } from "node:tls";
 
 import type { RedisClientLike } from "./session-store.js";
 
@@ -39,9 +40,18 @@ export class RedisTcpClient implements RedisClientLike {
 
   private command(parts: string[]): Promise<RedisReply> {
     return new Promise((resolve, reject) => {
-      const socket = new Socket();
+      const socket =
+        this.url.protocol === "rediss:"
+          ? connectTls({
+              host: this.url.hostname,
+              port: Number(this.url.port || 6379),
+              servername: this.url.hostname,
+            })
+          : new Socket();
       const chunks: Buffer[] = [];
       let settled = false;
+      let authenticated = !this.needsAuth();
+      let authBuffer = Buffer.alloc(0);
 
       const fail = (error: Error) => {
         if (settled) {
@@ -53,6 +63,27 @@ export class RedisTcpClient implements RedisClientLike {
       };
 
       socket.on("data", (chunk) => {
+        if (!authenticated) {
+          authBuffer = Buffer.concat([authBuffer, chunk]);
+          try {
+            const parser = new RedisParser(authBuffer);
+            parser.parse();
+            if (!parser.done) {
+              return;
+            }
+            authenticated = true;
+            authBuffer = Buffer.alloc(0);
+            socket.write(encodeCommand(parts));
+            return;
+          } catch (error) {
+            if (error instanceof IncompleteRedisReplyError) {
+              return;
+            }
+            fail(error instanceof Error ? error : new Error("Redis authentication failed."));
+            return;
+          }
+        }
+
         chunks.push(chunk);
         try {
           const parser = new RedisParser(Buffer.concat(chunks));
@@ -72,12 +103,30 @@ export class RedisTcpClient implements RedisClientLike {
       });
 
       socket.on("error", fail);
-      socket.on("connect", () => socket.write(encodeCommand(parts)));
-      socket.connect({
-        host: this.url.hostname,
-        port: Number(this.url.port || 6379),
+      socket.on("connect", () => {
+        if (this.needsAuth()) {
+          socket.write(encodeCommand(this.authCommand()));
+          return;
+        }
+        socket.write(encodeCommand(parts));
       });
+      if (this.url.protocol !== "rediss:") {
+        socket.connect({
+          host: this.url.hostname,
+          port: Number(this.url.port || 6379),
+        });
+      }
     });
+  }
+
+  private needsAuth(): boolean {
+    return this.url.password !== "" || this.url.username !== "";
+  }
+
+  private authCommand(): string[] {
+    const username = decodeURIComponent(this.url.username);
+    const password = decodeURIComponent(this.url.password);
+    return username === "" ? ["AUTH", password] : ["AUTH", username, password];
   }
 }
 

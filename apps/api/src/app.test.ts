@@ -155,7 +155,7 @@ describe("api app", () => {
 
     await postJson(app, "/api/sessions", { hostDeviceId: "host-1" });
     now += 61_000;
-    await app(new Request("http://localhost/api/health"));
+    await app(new Request("http://localhost/api/config"));
 
     expect(onSessionExpired).toHaveBeenCalledWith("session-1", "ABC234");
   });
