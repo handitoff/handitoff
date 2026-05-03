@@ -257,6 +257,14 @@ export default function Session({ params }: Route.ComponentProps) {
         return;
       }
       if (event.type === "data-channel-close") {
+        if (hasActiveTransfer(stateRef.current.transfer)) {
+          dispatch({
+            type: "data-channel:failed",
+            message:
+              "The file channel closed during transfer. This usually means the paired tab closed, the device locked or slept, or one side changed networks.",
+          });
+          return;
+        }
         dispatch({ type: "data-channel:closed" });
         return;
       }
@@ -301,7 +309,7 @@ export default function Session({ params }: Route.ComponentProps) {
         void transferRef.current?.handleData(event.data).catch((error: unknown) => {
           dispatch({
             type: "data-channel:failed",
-            message: error instanceof Error ? error.message : "Transfer message failed.",
+            message: getTransferErrorMessage(error),
           });
         });
         setLastDataChannelMessage("Transfer update");
@@ -599,7 +607,7 @@ export default function Session({ params }: Route.ComponentProps) {
             </h1>
             <p className="xfer-send-sub">
               {hasChannelIssue
-                ? "Direct connection dropped — retry to reconnect."
+                ? getChannelIssueMessage(state)
                 : "Files land on the paired device. Photos, docs, archives — anything."}
             </p>
             <div className="xfer-drop-strip" aria-label="File drop area">
@@ -874,13 +882,17 @@ function XferRow({
   const failed = item.status === "failed" || item.status === "rejected";
   const canceled = item.status === "canceled";
   const active = !done && !failed && !canceled;
+  const rowTitle = item.error === undefined ? item.name : `${item.name}: ${item.error}`;
 
   return (
     <div className="xfer-row">
       <div className="xfer-row-fill" style={{ width: `${pct}%` }} />
       <span className="xfer-row-index">{String(index).padStart(2, "0")}</span>
-      <span className="xfer-row-name" title={item.name}>
-        {item.name}
+      <span className="xfer-row-name" title={rowTitle}>
+        <span>{item.name}</span>
+        {failed && item.error !== undefined ? (
+          <span className="xfer-row-error">{item.error}</span>
+        ) : null}
       </span>
       <span className="xfer-row-meta">{formatBytes(item.size)}</span>
       <span className="xfer-row-status">
@@ -951,6 +963,44 @@ function getChannelFootnote(
     return "Reconnecting pairing channel.";
   }
   return "Preparing secure transfer.";
+}
+
+function getChannelIssueMessage(state: ClientSessionState): string {
+  return state.error ?? "The direct browser connection stopped. Retry to reconnect.";
+}
+
+function getTransferErrorMessage(error: unknown): string {
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "OperationError"
+  ) {
+    return "Could not decrypt a file chunk. The secure session keys did not match or the data was corrupted.";
+  }
+  if (error instanceof Error) {
+    if (/without a chunk header/i.test(error.message)) {
+      return "Received file data out of sequence. Retry the transfer.";
+    }
+    if (/out of order|wrong offset/i.test(error.message)) {
+      return "Received file chunks out of order. Retry the transfer.";
+    }
+    if (/integrity verification/i.test(error.message)) {
+      return "The received file failed integrity verification. Retry the transfer.";
+    }
+    return error.message;
+  }
+  return "Transfer failed while reading data from the paired browser.";
+}
+
+function hasActiveTransfer(transfer: ClientSessionState["transfer"]): boolean {
+  return [...transfer.outgoing, ...transfer.incoming].some((item) => {
+    return (
+      item.status !== "complete" &&
+      item.status !== "failed" &&
+      item.status !== "rejected" &&
+      item.status !== "canceled"
+    );
+  });
 }
 
 async function fetchConfig(signal: AbortSignal) {

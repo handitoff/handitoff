@@ -209,6 +209,53 @@ describe("@handitoff/transfer", () => {
     ).rejects.toThrow("out of order");
   });
 
+  it("emits a file-level error when incoming chunks cannot be processed", async () => {
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const channel = new FakeChannel();
+    const errors: TransferProgressSnapshot[] = [];
+    const receiver = new BrowserTransferController({
+      channel,
+      key,
+      events: { onError: (snapshot) => errors.push(snapshot) },
+    });
+
+    await receiver.handleData(
+      JSON.stringify({
+        type: "file:offer",
+        transferId: "transfer-1",
+        files: [{ fileId: "file-1", name: "a.txt", size: 1, mimeType: "text/plain" }],
+        totalSize: 1,
+      }),
+    );
+    await receiver.handleData(
+      JSON.stringify({
+        type: "file:chunk",
+        transferId: "transfer-1",
+        fileId: "file-1",
+        chunkIndex: 0,
+        offset: 0,
+        plaintextSize: 1,
+        encryptedSize: 17,
+        iv: "AAAAAAAAAAAAAAAA",
+      }),
+    );
+
+    await expect(receiver.handleData(new ArrayBuffer(1))).rejects.toThrow(
+      "Encrypted chunk size does not match its header.",
+    );
+    expect(errors[errors.length - 1]).toMatchObject({
+      transferId: "transfer-1",
+      fileId: "file-1",
+      direction: "incoming",
+      status: "failed",
+      name: "a.txt",
+      error: "Encrypted chunk size does not match its header.",
+    });
+  });
+
   it("cancels before encrypted sending continues", async () => {
     const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
       "encrypt",

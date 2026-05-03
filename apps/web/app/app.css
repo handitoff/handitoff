@@ -329,13 +329,27 @@ a {
 }
 
 .xfer-row-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 13px;
   font-weight: 500;
   letter-spacing: -0.01em;
   overflow: hidden;
+  padding-right: 12px;
+}
+
+.xfer-row-name > span {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding-right: 12px;
+}
+
+.xfer-row-error {
+  font-size: 11px;
+  font-weight: 400;
+  color: #f0f0ed;
+  opacity: 0.82;
 }
 
 .xfer-row-meta {

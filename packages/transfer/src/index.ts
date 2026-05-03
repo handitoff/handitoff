@@ -289,7 +289,12 @@ export class BrowserTransferController {
   }
 
   public handleData(data: unknown): Promise<void> {
-    const next = this.incomingQueue.then(() => this.handleDataInOrder(data));
+    const next = this.incomingQueue
+      .then(() => this.handleDataInOrder(data))
+      .catch((error) => {
+        this.emitIncomingFailure(error);
+        throw error;
+      });
     this.incomingQueue = next.catch(() => undefined);
     return next;
   }
@@ -407,7 +412,11 @@ export class BrowserTransferController {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Transfer failed.";
-      this.sendJson({ type: "transfer:error", transferId, code: "transfer_failed", message });
+      try {
+        this.sendJson({ type: "transfer:error", transferId, code: "transfer_failed", message });
+      } catch {
+        // The local UI still needs the original transfer failure even if the peer channel is gone.
+      }
       this.emitError({
         transferId,
         direction: "outgoing",
@@ -427,7 +436,9 @@ export class BrowserTransferController {
   ): Promise<void> {
     if (file.size > transfer.maxHashableFileBytes) {
       throw new Error(
-        `Files over ${transfer.maxHashableFileBytes} bytes are not supported by this transfer build.`,
+        `This file is too large for the current browser transfer limit (${formatFileSize(
+          file.size,
+        )} selected, ${formatFileSize(transfer.maxHashableFileBytes)} supported).`,
       );
     }
     const chunkCount = calculateChunkCount(file.size, transfer.chunkSizeBytes);
@@ -452,7 +463,10 @@ export class BrowserTransferController {
         iv: base64urlEncode(iv),
       };
       this.sendJson(header);
-      this.options.channel.send(encrypted);
+      this.sendChannelData(
+        encrypted,
+        `The browser data channel closed while sending ${metadata.name}. The paired device may have gone offline, locked, or changed networks.`,
+      );
       bytesSent += plaintext.byteLength;
       this.emitProgress({
         transferId: transfer.transferId,
@@ -603,7 +617,31 @@ export class BrowserTransferController {
   }
 
   private sendJson(message: TransferMessage): void {
-    this.options.channel.send(JSON.stringify(message));
+    this.sendChannelData(
+      JSON.stringify(message),
+      "The browser data channel closed while sending transfer metadata.",
+    );
+  }
+
+  private sendChannelData(
+    data: string | ArrayBuffer | ArrayBufferView<ArrayBufferLike>,
+    failureMessage: string,
+  ): void {
+    try {
+      this.options.channel.send(data);
+    } catch (error) {
+      if (
+        typeof DOMException !== "undefined" &&
+        error instanceof DOMException &&
+        error.name === "InvalidStateError"
+      ) {
+        throw new Error(failureMessage);
+      }
+      if (error instanceof Error && /closed|closing|not open|invalidstate/i.test(error.message)) {
+        throw new Error(failureMessage);
+      }
+      throw error;
+    }
   }
 
   private emitProgress(snapshot: TransferProgressSnapshot): void {
@@ -621,6 +659,36 @@ export class BrowserTransferController {
     this.options.events?.onError?.(snapshot);
     this.options.events?.onProgress?.(snapshot);
   }
+
+  private emitIncomingFailure(error: unknown): void {
+    const message = normalizeTransferError(error);
+    const pending = findActiveIncomingFile(this.incoming);
+    if (pending === undefined) {
+      this.emitError({
+        transferId: "incoming-transfer",
+        direction: "incoming",
+        status: "failed",
+        bytesTransferred: 0,
+        totalBytes: 0,
+        progress: 0,
+        error: message,
+      });
+      return;
+    }
+    const { transfer, file } = pending;
+    file.status = "failed";
+    this.emitError({
+      transferId: transfer.transferId,
+      fileId: file.metadata.fileId,
+      direction: "incoming",
+      status: "failed",
+      bytesTransferred: file.receivedBytes,
+      totalBytes: file.metadata.size,
+      progress: calculateProgress(file.receivedBytes, file.metadata.size),
+      name: file.metadata.name,
+      error: message,
+    });
+  }
 }
 
 function findPendingIncomingFile(
@@ -634,6 +702,56 @@ function findPendingIncomingFile(
     }
   }
   return undefined;
+}
+
+function findActiveIncomingFile(
+  transfers: Map<string, IncomingTransfer>,
+): { transfer: IncomingTransfer; file: IncomingFile } | undefined {
+  const pending = findPendingIncomingFile(transfers);
+  if (pending !== undefined) {
+    return pending;
+  }
+  for (const transfer of transfers.values()) {
+    for (const file of transfer.files.values()) {
+      if (file.status === "accepted" || file.status === "transferring") {
+        return { transfer, file };
+      }
+    }
+  }
+  return undefined;
+}
+
+function normalizeTransferError(error: unknown): string {
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "OperationError"
+  ) {
+    return "Could not decrypt this file chunk. The secure session keys did not match or the data was corrupted in transit.";
+  }
+  if (error instanceof Error) {
+    if (/without a chunk header/i.test(error.message)) {
+      return "Received file data out of sequence. The browser connection delivered an unexpected transfer chunk.";
+    }
+    if (/out of order|wrong offset/i.test(error.message)) {
+      return "Received file chunks out of order. The transfer stream became inconsistent.";
+    }
+    if (/integrity verification/i.test(error.message)) {
+      return "The received file did not pass integrity verification. The file was incomplete or corrupted.";
+    }
+    if (/completed before all bytes/i.test(error.message)) {
+      return "The sender marked the file complete before all bytes arrived.";
+    }
+    return error.message;
+  }
+  return "Transfer failed while reading data from the paired browser.";
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function normalizeFileName(name: string): string {
