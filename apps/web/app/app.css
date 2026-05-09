@@ -859,6 +859,178 @@ a {
   text-underline-offset: 2px;
 }
 
+.seo-hero {
+  padding: 112px 32px 80px;
+  border-bottom: 1px solid #e5e5e2;
+}
+
+.seo-tag {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #73736f;
+  margin: 0 0 28px;
+}
+
+.seo-title {
+  margin: 0;
+  font-size: clamp(48px, 7vw, 92px);
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 0.98;
+  max-width: 980px;
+}
+
+.seo-lead {
+  margin: 28px 0 0;
+  color: #555552;
+  max-width: 680px;
+  line-height: 1.6;
+  font-size: clamp(16px, 2vw, 20px);
+}
+
+.seo-actions {
+  margin-top: 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  color: #73736f;
+  font-size: 13px;
+}
+
+.seo-section {
+  padding: 72px 32px;
+  border-bottom: 1px solid #e5e5e2;
+}
+
+.seo-section-grid {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 760px);
+  gap: 48px;
+  align-items: start;
+}
+
+.seo-index {
+  color: #73736f;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  padding-top: 7px;
+}
+
+.seo-heading {
+  margin: 0 0 18px;
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.seo-body p {
+  margin: 0 0 16px;
+  color: #555552;
+  line-height: 1.65;
+  font-size: 15px;
+}
+
+.seo-body p:last-child {
+  margin-bottom: 0;
+}
+
+.seo-steps,
+.seo-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #555552;
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.seo-steps li,
+.seo-list li {
+  padding-left: 6px;
+}
+
+.seo-faq-list {
+  border-top: 1px solid #0a0a0a;
+}
+
+.seo-faq-item {
+  padding: 24px 0;
+  border-bottom: 1px solid #e5e5e2;
+}
+
+.seo-faq-item h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.seo-faq-item p {
+  margin: 10px 0 0;
+  color: #555552;
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.seo-related {
+  padding: 56px 32px 88px;
+}
+
+.seo-related h2 {
+  margin: 0 0 22px;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.seo-related-links,
+.el-link-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid #0a0a0a;
+}
+
+.seo-related-links a,
+.el-link-tile {
+  min-height: 120px;
+  padding: 22px;
+  color: #0a0a0a;
+  text-decoration: none;
+  border-right: 1px solid #e5e5e2;
+  border-bottom: 1px solid #e5e5e2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.seo-related-links a:nth-child(4n),
+.el-link-tile:nth-child(4n) {
+  border-right: none;
+}
+
+.seo-related-links a:hover,
+.el-link-tile:hover {
+  background: #fff;
+}
+
+.el-link-tile span {
+  color: #73736f;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.el-link-tile strong {
+  font-size: 18px;
+  line-height: 1.25;
+  letter-spacing: 0;
+  font-weight: 650;
+}
+
 @media (max-width: 800px) {
   .chrome {
     padding: 16px 24px 12px;
@@ -1499,6 +1671,26 @@ a {
     width: 100%;
     justify-content: flex-start;
   }
+
+  .seo-section-grid {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  .seo-related-links,
+  .el-link-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .seo-related-links a:nth-child(4n),
+  .el-link-tile:nth-child(4n) {
+    border-right: 1px solid #e5e5e2;
+  }
+
+  .seo-related-links a:nth-child(2n),
+  .el-link-tile:nth-child(2n) {
+    border-right: none;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1554,5 +1746,34 @@ a {
 
   .el-footer-line {
     font-size: clamp(36px, 10vw, 60px);
+  }
+
+  .seo-hero {
+    padding: 72px 20px 56px;
+  }
+
+  .seo-section,
+  .seo-related {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .seo-section-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .seo-related-links,
+  .el-link-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .seo-related-links a,
+  .el-link-tile,
+  .seo-related-links a:nth-child(2n),
+  .el-link-tile:nth-child(2n),
+  .seo-related-links a:nth-child(4n),
+  .el-link-tile:nth-child(4n) {
+    border-right: none;
   }
 }

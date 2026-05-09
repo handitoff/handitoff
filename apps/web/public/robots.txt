@@ -1,6 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /join/
-Disallow: /s/
 
 Sitemap: https://handitoff.io/sitemap.xml

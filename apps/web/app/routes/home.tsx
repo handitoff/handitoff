@@ -11,14 +11,21 @@ import {
 } from "../lib/session-store";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
 import { seoMeta } from "../lib/seo";
+import { seoPages } from "../lib/seo-pages";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
 
 export function meta() {
   return seoMeta({
-    title: "handitoff.io - AirDrop, but in your browser",
+    title: "Transfer files between devices instantly | handitoff",
     description:
-      "Scan with any phone. A peer-to-peer channel opens for ten minutes and files move directly between your devices.",
+      "Move files between your phone, laptop, tablet, or PC directly from your browser. No install, no account, no cloud uploads.",
     path: "/",
+    image: "https://handitoff.io/og.png",
+    ogTitle: "handitoff — AirDrop, but in your browser",
+    ogDescription: "Move files between devices instantly. No install. No account. No cloud uploads.",
+    twitterTitle: "handitoff — AirDrop, but in your browser",
+    twitterDescription:
+      "Move files between devices instantly. No install. No account. No cloud uploads.",
   });
 }
 
@@ -30,8 +37,10 @@ export default function Home() {
       <LWhy />
       <LQuote />
       <LPromises />
+      <LPopularUses />
       <LFaq />
       <SiteFooter />
+      <SoftwareApplicationJsonLd />
     </div>
   );
 }
@@ -303,8 +312,8 @@ function LHero() {
             Receive.
           </h1>
           <p className="lede">
-            Scan the code with any phone. A peer-to-peer channel opens for the next ten minutes —
-            files move directly between your devices and nowhere else.
+            Scan the code with any phone. A temporary browser channel opens for the next ten
+            minutes. Files transfer directly when possible, with a relay when needed.
           </p>
         </div>
         <div className="l-hero-rule" aria-hidden="true" />
@@ -400,7 +409,7 @@ function LWhy() {
     {
       n: "I",
       t: "Direct",
-      d: "Files travel between devices over WebRTC. There is no server in the middle holding your photo of the parking-lot ceiling.",
+      d: "Files travel between browsers over WebRTC when possible. If a direct path is blocked, encrypted traffic can use a relay.",
     },
     {
       n: "II",
@@ -469,7 +478,7 @@ function LPromises() {
     {
       n: "04",
       t: "Fast.",
-      d: "Files take the shortest path between two devices. Usually that path is your own Wi-Fi.",
+      d: "Files take a direct path when the browsers can make one. Otherwise, a relay keeps the transfer moving.",
     },
   ];
 
@@ -486,6 +495,34 @@ function LPromises() {
               <div className="el-promise-title">{p.t}</div>
               <p className="el-promise-body">{p.d}</p>
             </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LPopularUses() {
+  const links = [
+    seoPages.phoneToPc,
+    seoPages.iphoneToWindows,
+    seoPages.androidToMac,
+    seoPages.airdropAlternative,
+    seoPages.sendLargeFiles,
+    seoPages.noInstallFileTransfer,
+    seoPages.faq,
+  ];
+
+  return (
+    <section className="el-section">
+      <div className="el-container">
+        <h2 className="el-section-title">Popular ways to use handitoff</h2>
+        <div className="el-link-grid">
+          {links.map((page) => (
+            <Link to={page.path} className="el-link-tile" key={page.path}>
+              <span>{page.content.label}</span>
+              <strong>{page.content.title}</strong>
+            </Link>
           ))}
         </div>
       </div>
@@ -532,5 +569,30 @@ function LFaq() {
         </div>
       </div>
     </section>
+  );
+}
+
+function SoftwareApplicationJsonLd() {
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "handitoff",
+          applicationCategory: "UtilitiesApplication",
+          operatingSystem: "Web",
+          url: "https://handitoff.io",
+          description:
+            "Move files between devices directly from your browser. No install, no account, no cloud uploads.",
+          offers: {
+            "@type": "Offer",
+            price: "0",
+            priceCurrency: "EUR",
+          },
+        }),
+      }}
+    />
   );
 }

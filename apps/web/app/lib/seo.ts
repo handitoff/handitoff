@@ -11,6 +11,10 @@ export type SeoOptions = {
   path?: string;
   image?: string;
   noIndex?: boolean;
+  ogTitle?: string;
+  ogDescription?: string;
+  twitterTitle?: string;
+  twitterDescription?: string;
 };
 
 export function seoMeta(options: SeoOptions = {}) {
@@ -18,7 +22,11 @@ export function seoMeta(options: SeoOptions = {}) {
   const description = options.description ?? DEFAULT_DESCRIPTION;
   const canonical = `${SITE_URL}${options.path ?? "/"}`;
   const image = options.image ?? BANNER_URL;
-  const robots = options.noIndex ? "noindex,nofollow" : "index,follow";
+  const robots = options.noIndex ? "noindex, nofollow" : "index, follow";
+  const ogTitle = options.ogTitle ?? title;
+  const ogDescription = options.ogDescription ?? description;
+  const twitterTitle = options.twitterTitle ?? ogTitle;
+  const twitterDescription = options.twitterDescription ?? ogDescription;
 
   return [
     { title },
@@ -27,16 +35,16 @@ export function seoMeta(options: SeoOptions = {}) {
     { tagName: "link", rel: "canonical", href: canonical },
     { property: "og:type", content: "website" },
     { property: "og:site_name", content: SITE_NAME },
-    { property: "og:title", content: title },
-    { property: "og:description", content: description },
+    { property: "og:title", content: ogTitle },
+    { property: "og:description", content: ogDescription },
     { property: "og:url", content: canonical },
     { property: "og:image", content: image },
     { property: "og:image:width", content: "1609" },
     { property: "og:image:height", content: "986" },
     { property: "og:image:alt", content: "handitoff.io - Point. Tap. Receive." },
     { name: "twitter:card", content: "summary_large_image" },
-    { name: "twitter:title", content: title },
-    { name: "twitter:description", content: description },
+    { name: "twitter:title", content: twitterTitle },
+    { name: "twitter:description", content: twitterDescription },
     { name: "twitter:image", content: image },
   ];
 }
