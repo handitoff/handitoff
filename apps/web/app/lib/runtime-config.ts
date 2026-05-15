@@ -38,7 +38,9 @@ function defaultPublicConfig(): PublicConfig {
   };
 }
 
-const SERVER_DEFAULT_PUBLIC_CONFIG: PublicConfig = loadPublicConfig();
+function serverDefaultPublicConfig(): PublicConfig {
+  return loadPublicConfig();
+}
 
 declare global {
   interface Window {
@@ -50,7 +52,7 @@ export function loadPublicRuntimeConfig(overrides?: Partial<PublicConfig>): Publ
   const runtimeOverrides =
     overrides ?? (typeof window === "undefined" ? undefined : window.__HANDITOFF_PUBLIC_CONFIG__);
   const defaults =
-    typeof window === "undefined" ? SERVER_DEFAULT_PUBLIC_CONFIG : defaultPublicConfig();
+    typeof window === "undefined" ? serverDefaultPublicConfig() : defaultPublicConfig();
 
   return {
     ...defaults,

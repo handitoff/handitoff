@@ -22,7 +22,8 @@ export function meta() {
     path: "/",
     image: "https://handitoff.io/og.png",
     ogTitle: "handitoff — AirDrop, but in your browser",
-    ogDescription: "Move files between devices instantly. No install. No account. No cloud uploads.",
+    ogDescription:
+      "Move files between devices instantly. No install. No account. No cloud uploads.",
     twitterTitle: "handitoff — AirDrop, but in your browser",
     twitterDescription:
       "Move files between devices instantly. No install. No account. No cloud uploads.",
@@ -94,9 +95,11 @@ function LHero() {
         const socket = new HanditoffWebSocketClient(config.wsUrl);
         socketRef.current = socket;
 
-        socket.onStatus((status) => {
+        socket.onStatus((status, reason) => {
           dispatch(
-            status === "connected" ? { type: "socket:connected" } : { type: "socket:disconnected" },
+            status === "connected"
+              ? { type: "socket:connected" }
+              : { type: "socket:disconnected", reason },
           );
           if (status === "connected") {
             socket.send({

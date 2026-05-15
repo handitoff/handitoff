@@ -63,11 +63,17 @@ class FakeWebSocket implements WebSocketLike {
 
   public addEventListener(type: "open", listener: () => void): void;
   public addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
-  public addEventListener(type: "close", listener: () => void): void;
+  public addEventListener(
+    type: "close",
+    listener: (event: { code?: number; reason?: string }) => void,
+  ): void;
   public addEventListener(type: "error", listener: () => void): void;
   public addEventListener(
     type: "open" | "message" | "close" | "error",
-    listener: (() => void) | ((event: { data: unknown }) => void),
+    listener:
+      | (() => void)
+      | ((event: { data: unknown }) => void)
+      | ((event: { code?: number; reason?: string }) => void),
   ): void {
     const listeners = this.listeners.get(type) ?? new Set();
     listeners.add(listener as (event?: { data: unknown }) => void);

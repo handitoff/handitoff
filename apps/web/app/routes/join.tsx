@@ -49,9 +49,11 @@ export default function Join({ params }: Route.ComponentProps) {
         const socket = new HanditoffWebSocketClient(config.wsUrl);
         socketRef.current = socket;
 
-        socket.onStatus((status) => {
+        socket.onStatus((status, reason) => {
           dispatch(
-            status === "connected" ? { type: "socket:connected" } : { type: "socket:disconnected" },
+            status === "connected"
+              ? { type: "socket:connected" }
+              : { type: "socket:disconnected", reason },
           );
           if (status === "connected") {
             socket.send({

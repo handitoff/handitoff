@@ -55,11 +55,12 @@ export default function Session({ params }: Route.ComponentProps) {
   const stateRef = useRef<ClientSessionState>(initialClientSessionState);
   const configRef = useRef(loadPublicRuntimeConfig());
   const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
-  const [chosenFiles, setChosenFiles] = useState<File[]>([]);
+  const [, setChosenFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [lastDataChannelMessage, setLastDataChannelMessage] = useState("Waiting");
   const [retryKey, setRetryKey] = useState(0);
   const [networkType, setNetworkType] = useState<"local" | "relay" | "unknown">("unknown");
+  const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set());
 
   stateRef.current = state;
 
@@ -372,9 +373,11 @@ export default function Session({ params }: Route.ComponentProps) {
         const socket = new HanditoffWebSocketClient(config.wsUrl);
         socketRef.current = socket;
 
-        socket.onStatus((status) => {
+        socket.onStatus((status, reason) => {
           dispatch(
-            status === "connected" ? { type: "socket:connected" } : { type: "socket:disconnected" },
+            status === "connected"
+              ? { type: "socket:connected" }
+              : { type: "socket:disconnected", reason },
           );
           if (status === "connected") {
             socket.send({
@@ -569,8 +572,8 @@ export default function Session({ params }: Route.ComponentProps) {
   const connectionLabel = getConnectionLabel(state, canSendFiles, hasChannelIssue);
   const channelFootnote = getChannelFootnote(state, canSendFiles, hasChannelIssue);
   const peerLabel = state.peerDeviceLabel ?? "Paired device";
-  const outgoingTransfers = state.transfer.outgoing;
-  const incomingTransfers = state.transfer.incoming;
+  const localLabel = state.deviceLabel ?? "This device";
+  const allTransfers = [...state.transfer.outgoing, ...state.transfer.incoming];
 
   return (
     <AppShell>
@@ -592,144 +595,93 @@ export default function Session({ params }: Route.ComponentProps) {
           readFiles(event.dataTransfer.files);
         }}
       >
-        {/* SEND — left on desktop, top on mobile */}
-        <section className="xfer-panel">
-          <div className="xfer-panel-header">
-            <span className="xfer-panel-dir">↑ Send</span>
-            <span className="xfer-panel-peer">{peerLabel}</span>
-          </div>
-
-          <div className="xfer-send-body">
-            <h1 className="xfer-send-title">
-              Drop
-              <br />
-              anything.
-            </h1>
-            <p className="xfer-send-sub">
-              {hasChannelIssue
-                ? getChannelIssueMessage(state)
-                : "Files land on the paired device. Photos, docs, archives — anything."}
-            </p>
-            <div className="xfer-drop-strip" aria-label="File drop area">
-              <span>{dragActive ? "Release to send" : "Drop files here"}</span>
-              <span className="xfer-drop-code">{params.code}</span>
-            </div>
-            <div className="xfer-send-actions">
-              <input
-                ref={inputRef}
-                type="file"
-                multiple
-                className="visually-hidden"
-                onChange={(event) => readFiles(event.target.files)}
-                aria-label="Choose files to send"
-                disabled={!canSendFiles}
-              />
-              <button
-                className="button"
-                type="button"
-                onClick={chooseFiles}
-                disabled={!canSendFiles}
-              >
-                {canSendFiles
-                  ? "Choose files"
-                  : state.dataChannel === "open"
-                    ? "Securing…"
-                    : "Connecting…"}
-              </button>
-              {hasChannelIssue ? (
-                <button className="button secondary" type="button" onClick={retryConnection}>
-                  Retry
-                </button>
-              ) : null}
-              <button className="button secondary" type="button" onClick={endSession}>
-                End session
-              </button>
-            </div>
-          </div>
-
-          <div className="xfer-list-area">
-            <div className="xfer-list-header">
-              <span>Outbound</span>
-              {outgoingTransfers.length > 0 ? (
-                <span>
-                  {outgoingTransfers.length} {outgoingTransfers.length === 1 ? "file" : "files"}
-                </span>
-              ) : null}
-            </div>
-            <div className="xfer-scroll">
-              {outgoingTransfers.length === 0 ? (
-                <div className="xfer-empty">
-                  {chosenFiles.length > 0
-                    ? `${chosenFiles.length} ${chosenFiles.length === 1 ? "file" : "files"} queued`
-                    : "No files sent yet"}
-                </div>
-              ) : (
-                outgoingTransfers.map((item, i) => (
-                  <XferRow
-                    key={item.id}
-                    item={item}
-                    index={i + 1}
-                    onCancel={cancelTransfer}
-                    onRetry={retryTransfer}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </section>
-
-        <div className="xfer-hairline" />
-
-        {/* RECEIVE — right on desktop, bottom on mobile */}
-        <aside className="xfer-panel xfer-panel--receive">
-          <div className="xfer-panel-header">
-            <span className="xfer-panel-dir">↓ Receive</span>
-            <span className="xfer-panel-peer">{peerLabel}</span>
-          </div>
-
-          <div className="xfer-device-row">
+        {/* Top bar: peer device + status + session actions */}
+        <header className="xfer-topbar">
+          <div className="xfer-topbar-peer">
             <DeviceIcon label={peerLabel} ready={canSendFiles} />
             <div className="xfer-device-info">
               <span className="xfer-device-name">{peerLabel}</span>
               <span className="xfer-device-status">{connectionLabel}</span>
             </div>
           </div>
-
-          <div className="xfer-list-area">
-            <div className="xfer-list-header">
-              <span>Inbound</span>
-              {incomingTransfers.length > 0 ? (
-                <span>
-                  {incomingTransfers.length} {incomingTransfers.length === 1 ? "file" : "files"}
-                </span>
-              ) : null}
-            </div>
-            <div className="xfer-scroll">
-              {incomingTransfers.length === 0 ? (
-                <div className="xfer-empty">{lastDataChannelMessage}</div>
-              ) : (
-                incomingTransfers.map((item, i) => (
-                  <XferRow
-                    key={item.id}
-                    item={item}
-                    index={i + 1}
-                    onCancel={cancelTransfer}
-                    onRetry={retryTransfer}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="xfer-panel-footer">
-            <span>{channelFootnote}</span>
+          <div className="xfer-topbar-right">
             {networkType !== "unknown" ? (
               <span className={`xfer-net-badge xfer-net-badge--${networkType}`}>
                 {networkType === "local" ? "◉ Direct" : "◌ Relay"}
               </span>
             ) : null}
+            {hasChannelIssue ? (
+              <button className="button secondary" type="button" onClick={retryConnection}>
+                Retry
+              </button>
+            ) : null}
+            <button className="button secondary" type="button" onClick={endSession}>
+              End session
+            </button>
           </div>
-        </aside>
+        </header>
+
+        {/* Unified file pool */}
+        <div className="xfer-pool">
+          {allTransfers.length === 0 ? (
+            <div className="xfer-pool-empty">
+              <div className="xfer-pool-empty-icon">↑↓</div>
+              <p className="xfer-pool-empty-title">
+                {canSendFiles ? "No files yet" : lastDataChannelMessage}
+              </p>
+              <p className="xfer-pool-empty-sub">
+                {hasChannelIssue
+                  ? getChannelIssueMessage(state)
+                  : canSendFiles
+                    ? 'Drop files anywhere or tap "Choose files" to send.'
+                    : channelFootnote}
+              </p>
+            </div>
+          ) : (
+            <div className="xfer-pool-grid">
+              {allTransfers.map((item) => (
+                <FileCard
+                  key={item.id}
+                  item={item}
+                  localLabel={localLabel}
+                  peerLabel={peerLabel}
+                  downloaded={downloadedIds.has(item.id)}
+                  onDownload={() => setDownloadedIds((prev) => new Set([...prev, item.id]))}
+                  onCancel={cancelTransfer}
+                  onRetry={retryTransfer}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Send bar */}
+        <footer className="xfer-sendbar">
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            className="visually-hidden"
+            onChange={(event) => readFiles(event.target.files)}
+            aria-label="Choose files to send"
+            disabled={!canSendFiles}
+          />
+          {canSendFiles ? (
+            <span className="xfer-sendbar-hint">
+              {dragActive ? "Release to send" : "Drop files here or"}
+            </span>
+          ) : (
+            <span className="xfer-sendbar-status">{channelFootnote}</span>
+          )}
+          <button className="button" type="button" onClick={chooseFiles} disabled={!canSendFiles}>
+            {canSendFiles
+              ? "Choose files"
+              : state.dataChannel === "open"
+                ? "Securing…"
+                : "Connecting…"}
+          </button>
+          <span className="xfer-sendbar-code">{params.code}</span>
+        </footer>
       </main>
     </AppShell>
   );
@@ -754,11 +706,8 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   if (isLaptop) {
     return (
       <svg className="xfer-device-svg" viewBox="0 0 56 56" aria-hidden="true" {...common}>
-        {/* screen */}
         <rect x="4" y="2" width="48" height="34" rx="3" />
-        {/* camera dot */}
         <circle cx="28" cy="7" r="1.5" fill={stroke} stroke="none" />
-        {/* status in screen */}
         <text
           x="28"
           y="25"
@@ -770,11 +719,8 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
         >
           {ready ? "✓" : "…"}
         </text>
-        {/* hinge */}
         <line x1="0" y1="38" x2="56" y2="38" />
-        {/* base */}
         <rect x="0" y="38" width="56" height="14" rx="2" />
-        {/* trackpad */}
         <rect x="20" y="42" width="16" height="8" rx="2" />
       </svg>
     );
@@ -783,9 +729,7 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   if (isDesktop) {
     return (
       <svg className="xfer-device-svg" viewBox="0 0 56 56" aria-hidden="true" {...common}>
-        {/* monitor */}
         <rect x="2" y="2" width="52" height="36" rx="3" />
-        {/* status */}
         <text
           x="28"
           y="24"
@@ -797,9 +741,7 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
         >
           {ready ? "✓" : "…"}
         </text>
-        {/* stand neck */}
         <line x1="28" y1="38" x2="28" y2="48" />
-        {/* stand base */}
         <path d="M14 48 Q28 44 42 48" strokeWidth={sw} />
         <line x1="14" y1="48" x2="42" y2="48" />
       </svg>
@@ -814,13 +756,9 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
         aria-hidden="true"
         {...common}
       >
-        {/* body */}
         <rect x="3" y="2" width="38" height="64" rx="5" />
-        {/* camera */}
         <circle cx="22" cy="8" r="2" fill={stroke} stroke="none" />
-        {/* home button */}
         <circle cx="22" cy="60" r="3" />
-        {/* status */}
         <text
           x="22"
           y="38"
@@ -836,7 +774,6 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
     );
   }
 
-  // Phone (iPhone, Android, Unknown)
   return (
     <svg
       className="xfer-device-svg xfer-device-svg--tall"
@@ -844,13 +781,9 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
       aria-hidden="true"
       {...common}
     >
-      {/* body */}
       <rect x="2" y="2" width="32" height="64" rx="7" />
-      {/* speaker */}
       <rect x="12" y="9" width="12" height="4" rx="2" fill={stroke} stroke="none" />
-      {/* home bar */}
       <rect x="11" y="57" width="14" height="3" rx="1.5" fill={stroke} stroke="none" />
-      {/* status */}
       <text
         x="18"
         y="38"
@@ -866,14 +799,105 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   );
 }
 
-function XferRow({
+function FileTypeIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const isImage = /^(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif|heic)$/.test(ext);
+  const isVideo = /^(mp4|mov|avi|mkv|webm|m4v|flv)$/.test(ext);
+  const isAudio = /^(mp3|wav|ogg|flac|aac|m4a|opus|wma)$/.test(ext);
+  const isPdf = ext === "pdf";
+  const isArchive = /^(zip|tar|gz|bz2|rar|7z|tgz|xz)$/.test(ext);
+  const isCode =
+    /^(js|ts|jsx|tsx|py|go|rs|java|c|cpp|h|cs|rb|php|html|css|json|xml|yaml|yml|toml|sh|md|txt|csv)$/.test(
+      ext,
+    );
+
+  const s = {
+    viewBox: "0 0 32 32",
+    fill: "none",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    strokeWidth: "1.5",
+    "aria-hidden": true as const,
+  };
+
+  if (isImage) {
+    return (
+      <svg {...s} className="xfer-filetype xfer-filetype--image">
+        <rect x="3" y="3" width="26" height="26" rx="3" />
+        <circle cx="11" cy="12" r="2.5" />
+        <path d="M3 23 l8-8 5 5 4-4 9 9" />
+      </svg>
+    );
+  }
+  if (isVideo) {
+    return (
+      <svg {...s} className="xfer-filetype xfer-filetype--video">
+        <rect x="2" y="6" width="20" height="20" rx="3" />
+        <path d="M22 12 l8-4v16l-8-4V12z" />
+      </svg>
+    );
+  }
+  if (isAudio) {
+    return (
+      <svg {...s} className="xfer-filetype xfer-filetype--audio">
+        <circle cx="16" cy="16" r="13" />
+        <circle cx="16" cy="16" r="4" />
+        <path d="M16 3a13 13 0 0 1 9.2 22.2" />
+      </svg>
+    );
+  }
+  if (isPdf) {
+    return (
+      <svg {...s} className="xfer-filetype xfer-filetype--pdf">
+        <path d="M6 2h14l8 8v20H6V2z" />
+        <path d="M20 2v8h8" />
+        <path d="M9 17h6M9 21h10M9 25h4" />
+      </svg>
+    );
+  }
+  if (isArchive) {
+    return (
+      <svg {...s} className="xfer-filetype xfer-filetype--archive">
+        <rect x="3" y="12" width="26" height="18" rx="2" />
+        <path d="M3 12 L8 2h16l5 10" />
+        <line x1="13" y1="2" x2="13" y2="12" />
+        <line x1="19" y1="2" x2="19" y2="12" />
+        <rect x="12" y="18" width="8" height="5" rx="1" />
+      </svg>
+    );
+  }
+  if (isCode) {
+    return (
+      <svg {...s} className="xfer-filetype xfer-filetype--code">
+        <path d="M6 2h14l8 8v20H6V2z" />
+        <path d="M20 2v8h8" />
+        <path d="M11 19 l4-3-4-3M16 22h7" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...s} className="xfer-filetype xfer-filetype--file">
+      <path d="M6 2h14l8 8v20H6V2z" />
+      <path d="M20 2v8h8" />
+      <path d="M9 18h14M9 22h10" />
+    </svg>
+  );
+}
+
+function FileCard({
   item,
-  index,
+  localLabel,
+  peerLabel,
+  downloaded,
+  onDownload,
   onCancel,
   onRetry,
 }: {
   item: TransferItem;
-  index: number;
+  localLabel: string;
+  peerLabel: string;
+  downloaded: boolean;
+  onDownload: () => void;
   onCancel: (id: string, fileId: string | undefined) => void;
   onRetry: (id: string) => void;
 }) {
@@ -882,43 +906,77 @@ function XferRow({
   const failed = item.status === "failed" || item.status === "rejected";
   const canceled = item.status === "canceled";
   const active = !done && !failed && !canceled;
-  const rowTitle = item.error === undefined ? item.name : `${item.name}: ${item.error}`;
+  const isIncoming = item.direction === "incoming";
+  const fromLabel = isIncoming ? peerLabel : localLabel;
+  const dirArrow = isIncoming ? "↓" : "↑";
+
+  let cardClass = "xfer-card";
+  if (done && !isIncoming) cardClass += " xfer-card--sent";
+  if (failed) cardClass += " xfer-card--failed";
 
   return (
-    <div className="xfer-row">
-      <div className="xfer-row-fill" style={{ width: `${pct}%` }} />
-      <span className="xfer-row-index">{String(index).padStart(2, "0")}</span>
-      <span className="xfer-row-name" title={rowTitle}>
-        <span>{item.name}</span>
-        {failed && item.error !== undefined ? (
-          <span className="xfer-row-error">{item.error}</span>
-        ) : null}
-      </span>
-      <span className="xfer-row-meta">{formatBytes(item.size)}</span>
-      <span className="xfer-row-status">
-        {done ? "✓" : failed ? "✗" : canceled ? "—" : `${pct}%`}
-      </span>
-      <div className="xfer-row-actions">
-        {done && item.downloadUrl !== undefined ? (
-          <a className="xfer-action" href={item.downloadUrl} download={item.name}>
-            Save
-          </a>
-        ) : null}
-        {failed ? (
-          <button className="xfer-action" type="button" onClick={() => onRetry(item.id)}>
-            Retry
-          </button>
-        ) : null}
-        {active ? (
-          <button
-            className="xfer-action xfer-action--cancel"
-            type="button"
-            onClick={() => onCancel(item.id, item.fileId)}
-            aria-label="Cancel"
-          >
-            ×
-          </button>
-        ) : null}
+    <div className={cardClass}>
+      {active ? (
+        <div className="xfer-card-progress">
+          <div className="xfer-card-progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+      ) : null}
+      <div className="xfer-card-icon">
+        <FileTypeIcon name={item.name} />
+      </div>
+      <div className="xfer-card-body">
+        <div className="xfer-card-row">
+          <span className="xfer-card-name" title={item.name}>
+            {item.name}
+          </span>
+          <span className="xfer-card-size">{formatBytes(item.size)}</span>
+        </div>
+        <div className="xfer-card-row xfer-card-row--meta">
+          <span className="xfer-card-from">
+            {dirArrow} {fromLabel}
+          </span>
+          <div className="xfer-card-actions">
+            {active ? <span className="xfer-card-pct">{pct}%</span> : null}
+            {done && !isIncoming ? (
+              <span className="xfer-card-badge xfer-card-badge--sent">Sent</span>
+            ) : null}
+            {done && isIncoming && downloaded ? (
+              <span className="xfer-card-badge xfer-card-badge--downloaded">Downloaded</span>
+            ) : null}
+            {done && isIncoming && item.downloadUrl !== undefined ? (
+              <a
+                className="xfer-action"
+                href={item.downloadUrl}
+                download={item.name}
+                onClick={onDownload}
+              >
+                {downloaded ? "Save again" : "Save"}
+              </a>
+            ) : null}
+            {failed ? (
+              <>
+                <span className="xfer-card-badge xfer-card-badge--failed">Failed</span>
+                <button className="xfer-action" type="button" onClick={() => onRetry(item.id)}>
+                  Retry
+                </button>
+              </>
+            ) : null}
+            {canceled ? (
+              <span className="xfer-card-badge xfer-card-badge--canceled">Canceled</span>
+            ) : null}
+            {active ? (
+              <button
+                className="xfer-action xfer-action--cancel"
+                type="button"
+                onClick={() => onCancel(item.id, item.fileId)}
+                aria-label="Cancel"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {item.error !== undefined ? <span className="xfer-card-error">{item.error}</span> : null}
       </div>
     </div>
   );
