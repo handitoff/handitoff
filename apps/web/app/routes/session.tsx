@@ -61,6 +61,13 @@ export default function Session({ params }: Route.ComponentProps) {
   const [retryKey, setRetryKey] = useState(0);
   const [networkType, setNetworkType] = useState<"local" | "relay" | "unknown">("unknown");
   const [downloadedIds, setDownloadedIds] = useState<Set<string>>(new Set());
+  const [previewMap, setPreviewMap] = useState<Record<string, string>>({});
+  const [lightbox, setLightbox] = useState<{
+    previewUrl: string | undefined;
+    name: string;
+    downloadUrl: string | undefined;
+    itemId: string;
+  } | null>(null);
 
   stateRef.current = state;
 
@@ -522,6 +529,17 @@ export default function Session({ params }: Route.ComponentProps) {
     if (selected.length === 0) {
       return;
     }
+    const newPreviews: Record<string, string> = {};
+    for (const file of selected) {
+      if (/\.(jpg|jpeg|png|gif|webp|bmp|avif|heic)$/i.test(file.name)) {
+        const url = URL.createObjectURL(file);
+        objectUrlsRef.current.push(url);
+        newPreviews[`${file.name}:${file.size}`] = url;
+      }
+    }
+    if (Object.keys(newPreviews).length > 0) {
+      setPreviewMap((prev) => ({ ...prev, ...newPreviews }));
+    }
     const controller = ensureTransferController();
     if (controller === undefined) {
       dispatch({
@@ -575,8 +593,24 @@ export default function Session({ params }: Route.ComponentProps) {
   const localLabel = state.deviceLabel ?? "This device";
   const allTransfers = [...state.transfer.outgoing, ...state.transfer.incoming];
 
+  const getPreviewUrl = (item: TransferItem): string | undefined => {
+    if (!/\.(jpg|jpeg|png|gif|webp|bmp|avif|heic|svg)$/i.test(item.name)) return undefined;
+    if (item.direction === "incoming") return item.downloadUrl;
+    return previewMap[`${item.name}:${item.size}`];
+  };
+
   return (
     <AppShell>
+      {lightbox !== null ? (
+        <Lightbox
+          previewUrl={lightbox.previewUrl}
+          name={lightbox.name}
+          downloadUrl={lightbox.downloadUrl}
+          downloaded={downloadedIds.has(lightbox.itemId)}
+          onDownload={() => setDownloadedIds((prev) => new Set([...prev, lightbox.itemId]))}
+          onClose={() => setLightbox(null)}
+        />
+      ) : null}
       <main
         className="xfer-stage"
         onDragEnter={(event) => {
@@ -595,7 +629,6 @@ export default function Session({ params }: Route.ComponentProps) {
           readFiles(event.dataTransfer.files);
         }}
       >
-        {/* Top bar: peer device + status + session actions */}
         <header className="xfer-topbar">
           <div className="xfer-topbar-peer">
             <DeviceIcon label={peerLabel} ready={canSendFiles} />
@@ -621,11 +654,9 @@ export default function Session({ params }: Route.ComponentProps) {
           </div>
         </header>
 
-        {/* Unified file pool */}
         <div className="xfer-pool">
           {allTransfers.length === 0 ? (
             <div className="xfer-pool-empty">
-              <div className="xfer-pool-empty-icon">↑↓</div>
               <p className="xfer-pool-empty-title">
                 {canSendFiles ? "No files yet" : lastDataChannelMessage}
               </p>
@@ -639,23 +670,34 @@ export default function Session({ params }: Route.ComponentProps) {
             </div>
           ) : (
             <div className="xfer-pool-grid">
-              {allTransfers.map((item) => (
-                <FileCard
-                  key={item.id}
-                  item={item}
-                  localLabel={localLabel}
-                  peerLabel={peerLabel}
-                  downloaded={downloadedIds.has(item.id)}
-                  onDownload={() => setDownloadedIds((prev) => new Set([...prev, item.id]))}
-                  onCancel={cancelTransfer}
-                  onRetry={retryTransfer}
-                />
-              ))}
+              {allTransfers.map((item) => {
+                const previewUrl = getPreviewUrl(item);
+                return (
+                  <FileCard
+                    key={item.id}
+                    item={item}
+                    localLabel={localLabel}
+                    peerLabel={peerLabel}
+                    previewUrl={previewUrl}
+                    downloaded={downloadedIds.has(item.id)}
+                    onDownload={() => setDownloadedIds((prev) => new Set([...prev, item.id]))}
+                    onOpenLightbox={() =>
+                      setLightbox({
+                        previewUrl,
+                        name: item.name,
+                        downloadUrl: item.downloadUrl,
+                        itemId: item.id,
+                      })
+                    }
+                    onCancel={cancelTransfer}
+                    onRetry={retryTransfer}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Send bar */}
         <footer className="xfer-sendbar">
           <input
             ref={inputRef}
@@ -687,6 +729,17 @@ export default function Session({ params }: Route.ComponentProps) {
   );
 }
 
+function getFileType(name: string): "image" | "video" | "audio" | "pdf" | "archive" | "code" | "file" {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (/^(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif|heic)$/.test(ext)) return "image";
+  if (/^(mp4|mov|avi|mkv|webm|m4v|flv)$/.test(ext)) return "video";
+  if (/^(mp3|wav|ogg|flac|aac|m4a|opus|wma)$/.test(ext)) return "audio";
+  if (ext === "pdf") return "pdf";
+  if (/^(zip|tar|gz|bz2|rar|7z|tgz|xz)$/.test(ext)) return "archive";
+  if (/^(js|ts|jsx|tsx|py|go|rs|java|c|cpp|h|cs|rb|php|html|css|json|xml|yaml|yml|toml|sh|md|txt|csv)$/.test(ext)) return "code";
+  return "file";
+}
+
 function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   const l = label.toLowerCase();
   const isTablet = l.includes("ipad");
@@ -695,122 +748,53 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
 
   const stroke = "#0a0a0a";
   const sw = "1.5";
-  const common = {
-    fill: "none",
-    stroke,
-    strokeWidth: sw,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
+  const common = { fill: "none", stroke, strokeWidth: sw, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
   if (isLaptop) {
     return (
       <svg className="xfer-device-svg" viewBox="0 0 56 56" aria-hidden="true" {...common}>
         <rect x="4" y="2" width="48" height="34" rx="3" />
         <circle cx="28" cy="7" r="1.5" fill={stroke} stroke="none" />
-        <text
-          x="28"
-          y="25"
-          textAnchor="middle"
-          fontSize="12"
-          fill={stroke}
-          stroke="none"
-          fontFamily="system-ui"
-        >
-          {ready ? "✓" : "…"}
-        </text>
+        <text x="28" y="25" textAnchor="middle" fontSize="12" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
         <line x1="0" y1="38" x2="56" y2="38" />
         <rect x="0" y="38" width="56" height="14" rx="2" />
         <rect x="20" y="42" width="16" height="8" rx="2" />
       </svg>
     );
   }
-
   if (isDesktop) {
     return (
       <svg className="xfer-device-svg" viewBox="0 0 56 56" aria-hidden="true" {...common}>
         <rect x="2" y="2" width="52" height="36" rx="3" />
-        <text
-          x="28"
-          y="24"
-          textAnchor="middle"
-          fontSize="12"
-          fill={stroke}
-          stroke="none"
-          fontFamily="system-ui"
-        >
-          {ready ? "✓" : "…"}
-        </text>
+        <text x="28" y="24" textAnchor="middle" fontSize="12" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
         <line x1="28" y1="38" x2="28" y2="48" />
         <path d="M14 48 Q28 44 42 48" strokeWidth={sw} />
         <line x1="14" y1="48" x2="42" y2="48" />
       </svg>
     );
   }
-
   if (isTablet) {
     return (
-      <svg
-        className="xfer-device-svg xfer-device-svg--tall"
-        viewBox="0 0 44 68"
-        aria-hidden="true"
-        {...common}
-      >
+      <svg className="xfer-device-svg xfer-device-svg--tall" viewBox="0 0 44 68" aria-hidden="true" {...common}>
         <rect x="3" y="2" width="38" height="64" rx="5" />
         <circle cx="22" cy="8" r="2" fill={stroke} stroke="none" />
         <circle cx="22" cy="60" r="3" />
-        <text
-          x="22"
-          y="38"
-          textAnchor="middle"
-          fontSize="11"
-          fill={stroke}
-          stroke="none"
-          fontFamily="system-ui"
-        >
-          {ready ? "✓" : "…"}
-        </text>
+        <text x="22" y="38" textAnchor="middle" fontSize="11" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
       </svg>
     );
   }
-
   return (
-    <svg
-      className="xfer-device-svg xfer-device-svg--tall"
-      viewBox="0 0 36 68"
-      aria-hidden="true"
-      {...common}
-    >
+    <svg className="xfer-device-svg xfer-device-svg--tall" viewBox="0 0 36 68" aria-hidden="true" {...common}>
       <rect x="2" y="2" width="32" height="64" rx="7" />
       <rect x="12" y="9" width="12" height="4" rx="2" fill={stroke} stroke="none" />
       <rect x="11" y="57" width="14" height="3" rx="1.5" fill={stroke} stroke="none" />
-      <text
-        x="18"
-        y="38"
-        textAnchor="middle"
-        fontSize="11"
-        fill={stroke}
-        stroke="none"
-        fontFamily="system-ui"
-      >
-        {ready ? "✓" : "…"}
-      </text>
+      <text x="18" y="38" textAnchor="middle" fontSize="11" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
     </svg>
   );
 }
 
-function FileTypeIcon({ name }: { name: string }) {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  const isImage = /^(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif|heic)$/.test(ext);
-  const isVideo = /^(mp4|mov|avi|mkv|webm|m4v|flv)$/.test(ext);
-  const isAudio = /^(mp3|wav|ogg|flac|aac|m4a|opus|wma)$/.test(ext);
-  const isPdf = ext === "pdf";
-  const isArchive = /^(zip|tar|gz|bz2|rar|7z|tgz|xz)$/.test(ext);
-  const isCode =
-    /^(js|ts|jsx|tsx|py|go|rs|java|c|cpp|h|cs|rb|php|html|css|json|xml|yaml|yml|toml|sh|md|txt|csv)$/.test(
-      ext,
-    );
-
+function FileTypeIcon({ name, size }: { name: string; size?: number }) {
+  const type = getFileType(name);
   const s = {
     viewBox: "0 0 32 32",
     fill: "none",
@@ -819,64 +803,54 @@ function FileTypeIcon({ name }: { name: string }) {
     strokeWidth: "1.5",
     "aria-hidden": true as const,
   };
+  const w = size ?? 28;
+  const style = { width: w, height: w };
 
-  if (isImage) {
-    return (
-      <svg {...s} className="xfer-filetype xfer-filetype--image">
-        <rect x="3" y="3" width="26" height="26" rx="3" />
-        <circle cx="11" cy="12" r="2.5" />
-        <path d="M3 23 l8-8 5 5 4-4 9 9" />
-      </svg>
-    );
-  }
-  if (isVideo) {
-    return (
-      <svg {...s} className="xfer-filetype xfer-filetype--video">
-        <rect x="2" y="6" width="20" height="20" rx="3" />
-        <path d="M22 12 l8-4v16l-8-4V12z" />
-      </svg>
-    );
-  }
-  if (isAudio) {
-    return (
-      <svg {...s} className="xfer-filetype xfer-filetype--audio">
-        <circle cx="16" cy="16" r="13" />
-        <circle cx="16" cy="16" r="4" />
-        <path d="M16 3a13 13 0 0 1 9.2 22.2" />
-      </svg>
-    );
-  }
-  if (isPdf) {
-    return (
-      <svg {...s} className="xfer-filetype xfer-filetype--pdf">
-        <path d="M6 2h14l8 8v20H6V2z" />
-        <path d="M20 2v8h8" />
-        <path d="M9 17h6M9 21h10M9 25h4" />
-      </svg>
-    );
-  }
-  if (isArchive) {
-    return (
-      <svg {...s} className="xfer-filetype xfer-filetype--archive">
-        <rect x="3" y="12" width="26" height="18" rx="2" />
-        <path d="M3 12 L8 2h16l5 10" />
-        <line x1="13" y1="2" x2="13" y2="12" />
-        <line x1="19" y1="2" x2="19" y2="12" />
-        <rect x="12" y="18" width="8" height="5" rx="1" />
-      </svg>
-    );
-  }
-  if (isCode) {
-    return (
-      <svg {...s} className="xfer-filetype xfer-filetype--code">
-        <path d="M6 2h14l8 8v20H6V2z" />
-        <path d="M20 2v8h8" />
-        <path d="M11 19 l4-3-4-3M16 22h7" />
-      </svg>
-    );
-  }
+  if (type === "image") return (
+    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <rect x="3" y="3" width="26" height="26" rx="3" />
+      <circle cx="11" cy="12" r="2.5" />
+      <path d="M3 23 l8-8 5 5 4-4 9 9" />
+    </svg>
+  );
+  if (type === "video") return (
+    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <rect x="2" y="6" width="20" height="20" rx="3" />
+      <path d="M22 12 l8-4v16l-8-4V12z" />
+    </svg>
+  );
+  if (type === "audio") return (
+    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <circle cx="16" cy="16" r="13" />
+      <circle cx="16" cy="16" r="4" />
+      <path d="M16 3a13 13 0 0 1 9.2 22.2" />
+    </svg>
+  );
+  if (type === "pdf") return (
+    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <path d="M6 2h14l8 8v20H6V2z" />
+      <path d="M20 2v8h8" />
+      <path d="M9 17h6M9 21h10M9 25h4" />
+    </svg>
+  );
+  if (type === "archive") return (
+    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <rect x="3" y="12" width="26" height="18" rx="2" />
+      <path d="M3 12 L8 2h16l5 10" />
+      <line x1="13" y1="2" x2="13" y2="12" />
+      <line x1="19" y1="2" x2="19" y2="12" />
+      <rect x="12" y="18" width="8" height="5" rx="1" />
+    </svg>
+  );
+  if (type === "code") return (
+    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <path d="M6 2h14l8 8v20H6V2z" />
+      <path d="M20 2v8h8" />
+      <path d="M11 19 l4-3-4-3M16 22h7" />
+    </svg>
+  );
   return (
-    <svg {...s} className="xfer-filetype xfer-filetype--file">
+    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--file`}>
       <path d="M6 2h14l8 8v20H6V2z" />
       <path d="M20 2v8h8" />
       <path d="M9 18h14M9 22h10" />
@@ -888,16 +862,20 @@ function FileCard({
   item,
   localLabel,
   peerLabel,
+  previewUrl,
   downloaded,
   onDownload,
+  onOpenLightbox,
   onCancel,
   onRetry,
 }: {
   item: TransferItem;
   localLabel: string;
   peerLabel: string;
+  previewUrl: string | undefined;
   downloaded: boolean;
   onDownload: () => void;
+  onOpenLightbox: () => void;
   onCancel: (id: string, fileId: string | undefined) => void;
   onRetry: (id: string) => void;
 }) {
@@ -907,76 +885,129 @@ function FileCard({
   const canceled = item.status === "canceled";
   const active = !done && !failed && !canceled;
   const isIncoming = item.direction === "incoming";
-  const fromLabel = isIncoming ? peerLabel : localLabel;
-  const dirArrow = isIncoming ? "↓" : "↑";
-
-  let cardClass = "xfer-card";
-  if (done && !isIncoming) cardClass += " xfer-card--sent";
-  if (failed) cardClass += " xfer-card--failed";
+  const type = getFileType(item.name);
+  const ext = item.name.split(".").pop()?.toUpperCase() ?? "";
+  const canSave = done && isIncoming && item.downloadUrl !== undefined;
 
   return (
-    <div className={cardClass}>
-      {active ? (
-        <div className="xfer-card-progress">
-          <div className="xfer-card-progress-fill" style={{ width: `${pct}%` }} />
-        </div>
-      ) : null}
-      <div className="xfer-card-icon">
-        <FileTypeIcon name={item.name} />
-      </div>
-      <div className="xfer-card-body">
-        <div className="xfer-card-row">
-          <span className="xfer-card-name" title={item.name}>
-            {item.name}
-          </span>
-          <span className="xfer-card-size">{formatBytes(item.size)}</span>
-        </div>
-        <div className="xfer-card-row xfer-card-row--meta">
-          <span className="xfer-card-from">
-            {dirArrow} {fromLabel}
-          </span>
-          <div className="xfer-card-actions">
-            {active ? <span className="xfer-card-pct">{pct}%</span> : null}
-            {done && !isIncoming ? (
-              <span className="xfer-card-badge xfer-card-badge--sent">Sent</span>
-            ) : null}
-            {done && isIncoming && downloaded ? (
-              <span className="xfer-card-badge xfer-card-badge--downloaded">Downloaded</span>
-            ) : null}
-            {done && isIncoming && item.downloadUrl !== undefined ? (
-              <a
-                className="xfer-action"
-                href={item.downloadUrl}
-                download={item.name}
-                onClick={onDownload}
-              >
-                {downloaded ? "Save again" : "Save"}
-              </a>
-            ) : null}
-            {failed ? (
-              <>
-                <span className="xfer-card-badge xfer-card-badge--failed">Failed</span>
-                <button className="xfer-action" type="button" onClick={() => onRetry(item.id)}>
-                  Retry
-                </button>
-              </>
-            ) : null}
-            {canceled ? (
-              <span className="xfer-card-badge xfer-card-badge--canceled">Canceled</span>
-            ) : null}
-            {active ? (
-              <button
-                className="xfer-action xfer-action--cancel"
-                type="button"
-                onClick={() => onCancel(item.id, item.fileId)}
-                aria-label="Cancel"
-              >
-                ×
-              </button>
-            ) : null}
+    <div className="xfer-card">
+      {/* Thumb — always opens lightbox */}
+      <div
+        className={`xfer-card-thumb xfer-thumb--${type} xfer-card-thumb--clickable`}
+        onClick={onOpenLightbox}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenLightbox(); } }}
+        aria-label={`Preview ${item.name}`}
+      >
+        {previewUrl !== undefined ? (
+          <img src={previewUrl} alt="" className="xfer-card-img" />
+        ) : (
+          <div className="xfer-thumb-icon">
+            <FileTypeIcon name={item.name} size={32} />
+            {ext ? <span className="xfer-thumb-ext">{ext.slice(0, 4)}</span> : null}
           </div>
+        )}
+        {active ? (
+          <div className="xfer-card-bar">
+            <div className="xfer-card-bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+        ) : null}
+        {failed ? <div className="xfer-card-err-mark">!</div> : null}
+        {canceled ? <div className="xfer-card-canceled-mark">—</div> : null}
+      </div>
+
+      {/* Info strip */}
+      <div className="xfer-card-info">
+        <span className="xfer-card-name" title={item.name}>{item.name}</span>
+        <div className="xfer-card-foot">
+          <span className="xfer-card-from">
+            {isIncoming ? `↓ ${peerLabel}` : `↑ ${localLabel}`}
+          </span>
+          <span className="xfer-card-size-status">
+            {active ? `${pct}%` : formatBytes(item.size)}
+          </span>
+          {active ? (
+            <button
+              className="xfer-card-cancel"
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onCancel(item.id, item.fileId); }}
+              aria-label="Cancel"
+            >×</button>
+          ) : null}
+          {failed ? (
+            <button className="xfer-card-retry" type="button" onClick={(e) => { e.stopPropagation(); onRetry(item.id); }}>
+              Retry
+            </button>
+          ) : null}
         </div>
-        {item.error !== undefined ? <span className="xfer-card-error">{item.error}</span> : null}
+        {item.error !== undefined ? (
+          <span className="xfer-card-error">{item.error}</span>
+        ) : null}
+      </div>
+
+      {/* Full-width save button for received files — easy to tap */}
+      {canSave ? (
+        <a
+          className={`xfer-card-save-btn${downloaded ? " xfer-card-save-btn--saved" : ""}`}
+          href={item.downloadUrl}
+          download={item.name}
+          onClick={(e) => { e.stopPropagation(); onDownload(); }}
+        >
+          {downloaded ? "✓ Saved" : "↓ Save"}
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function Lightbox({
+  previewUrl,
+  name,
+  downloadUrl,
+  downloaded,
+  onDownload,
+  onClose,
+}: {
+  previewUrl: string | undefined;
+  name: string;
+  downloadUrl: string | undefined;
+  downloaded: boolean;
+  onDownload: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="xfer-lightbox" onClick={onClose} role="dialog" aria-modal="true" aria-label={`Preview of ${name}`}>
+      <button className="xfer-lightbox-close" type="button" onClick={onClose} aria-label="Close">×</button>
+
+      <div className="xfer-lightbox-content" onClick={(e) => e.stopPropagation()}>
+        {previewUrl !== undefined ? (
+          <img src={previewUrl} alt={name} className="xfer-lightbox-img" />
+        ) : (
+          <div className={`xfer-lightbox-icon xfer-thumb--${getFileType(name)}`}>
+            <FileTypeIcon name={name} size={72} />
+          </div>
+        )}
+
+        <div className="xfer-lightbox-bar">
+          <span className="xfer-lightbox-name">{name}</span>
+          {downloadUrl !== undefined ? (
+            <a
+              className={`xfer-lightbox-dl${downloaded ? " xfer-lightbox-dl--saved" : ""}`}
+              href={downloadUrl}
+              download={name}
+              onClick={onDownload}
+            >
+              {downloaded ? "✓ Saved" : "↓ Save"}
+            </a>
+          ) : null}
+        </div>
       </div>
     </div>
   );
