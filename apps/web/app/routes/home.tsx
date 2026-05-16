@@ -177,8 +177,8 @@ function LNav() {
         handitoff
       </Link>
       <nav className="l-nav-right" aria-label="Main">
-        <Link to="/" className="l-nav-link l-nav-link--active">Transfer</Link>
-        <a href="#how-it-works" className="l-nav-link">How it works</a>
+        <Link to="/" className="l-nav-link l-nav-link--active l-nav-link--ancillary">Transfer</Link>
+        <a href="#how-it-works" className="l-nav-link l-nav-link--ancillary">How it works</a>
         <Link to="/privacy" className="l-nav-link l-nav-link--ext">
           Privacy
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style={{ marginLeft: 4, opacity: 0.6 }}>

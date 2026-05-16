@@ -1564,6 +1564,9 @@ a {
   padding-bottom: 2px;
   border-bottom: 1.5px solid transparent;
   transition: color 0.15s, border-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
 .l-nav-link:hover {
@@ -2377,14 +2380,16 @@ a {
 
   /* Hero */
   .l-nav-bar {
-    padding: 16px 24px;
+    padding: 0 24px;
+    height: 56px;
   }
 
   .l-hero-main {
-    padding: 16px 24px 48px;
+    padding: 16px 20px 48px;
   }
 
   .l-ticket-shadow {
+    width: min(1020px, calc(100vw - 40px));
     height: auto;
     aspect-ratio: auto;
   }
@@ -2401,6 +2406,14 @@ a {
     display: none;
   }
 
+  .l-ticket-body {
+    padding: 18px 20px;
+  }
+
+  .l-ticket-to {
+    padding-right: 16px;
+  }
+
   .l-ticket-stub {
     border-top: 1.5px dashed rgba(250, 250, 250, 0.28);
     padding: 20px;
@@ -2412,7 +2425,21 @@ a {
   }
 
   .l-ticket-title {
-    font-size: clamp(36px, 8vw, 60px);
+    font-size: clamp(32px, 8vw, 60px);
+    white-space: normal;
+  }
+
+  .l-ticket-btn {
+    height: 44px;
+    min-width: 80px;
+  }
+
+  .l-ticket-foot {
+    height: 44px;
+  }
+
+  .l-ticket-stub-foot {
+    height: 44px;
   }
 
   /* Sections */
@@ -2501,6 +2528,16 @@ a {
   .seo-related-links a:nth-child(2n),
   .el-link-tile:nth-child(2n) {
     border-right: none;
+  }
+}
+
+@media (max-width: 580px) {
+  .l-nav-link--ancillary {
+    display: none;
+  }
+
+  .l-nav-right {
+    gap: 18px;
   }
 }
 

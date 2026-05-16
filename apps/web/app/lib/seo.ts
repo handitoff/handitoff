@@ -3,7 +3,7 @@ const SITE_NAME = "handitoff.io";
 const DEFAULT_TITLE = "handitoff.io - Browser-based file handoff";
 const DEFAULT_DESCRIPTION =
   "Pair two devices with a QR code and move files directly through the browser. No install, no login, no cloud file storage.";
-const BANNER_URL = `${SITE_URL}/banner.png`;
+const BANNER_URL = `${SITE_URL}/og.png`;
 
 export type SeoOptions = {
   title?: string;
