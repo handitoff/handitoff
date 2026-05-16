@@ -9,3 +9,4 @@
 **/*.tsbuildinfo
 .DS_Store
 dev-server.log
+mockups/*

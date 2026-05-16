@@ -14,7 +14,7 @@ export function meta() {
 export default function Privacy() {
   return (
     <AppShell>
-      <main style={{ minHeight: "calc(100svh - 72px)" }}>
+      <main style={{ minHeight: "calc(100svh - 64px)" }}>
         <section className="lp-hero">
           <p className="lp-tag">Privacy</p>
           <h1 className="lp-title">No permanent profile.</h1>

@@ -14,7 +14,7 @@ export function meta() {
 export default function Security() {
   return (
     <AppShell>
-      <main style={{ minHeight: "calc(100svh - 72px)" }}>
+      <main style={{ minHeight: "calc(100svh - 64px)" }}>
         <section className="lp-hero">
           <p className="lp-tag">Security</p>
           <h1 className="lp-title">Built for a quick handoff.</h1>

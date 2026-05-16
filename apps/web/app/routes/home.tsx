@@ -2,6 +2,7 @@
 import { Link, useNavigate } from "react-router";
 import { SiteFooter } from "../components/site-footer";
 import { VisualQr } from "../components/visual-qr";
+import type { CSSProperties } from "react";
 import { HanditoffApiClient } from "../lib/api-client";
 import { getBrowserDeviceIdentity } from "../lib/device";
 import {
@@ -30,9 +31,175 @@ export function meta() {
   });
 }
 
+// ── Hero atmosphere helpers ──────────────────────────────────────────────────
+
+function rand(i: number) {
+  const x = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+const STAR_ITEMS = Array.from({ length: 140 }, (_, i) => ({
+  x: rand(i * 2 + 1) * 100,
+  y: rand(i * 2 + 2) * 76,
+  r: rand(i * 3 + 3) * 1.3 + 0.4,
+  op: rand(i * 5 + 4) * 0.55 + 0.35,
+}));
+
+function HeroStars() {
+  return (
+    <div className="l-stars" aria-hidden="true">
+      {STAR_ITEMS.map((s, i) => (
+        <div
+          key={i}
+          className="l-star"
+          style={{
+            left: `${s.x}%`,
+            top: `${s.y}%`,
+            width: s.r * 2,
+            height: s.r * 2,
+            opacity: s.op,
+            ["--star-op" as string]: s.op,
+            animationDuration: `${3 + (i % 5)}s`,
+            animationDelay: `${-(i % 7)}s`,
+          } as CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
+
+function HeroCloud({
+  scale = 1,
+  opacity = 0.4,
+  color = "#e8eef7",
+  flip = false,
+}: {
+  scale?: number;
+  opacity?: number;
+  color?: string;
+  flip?: boolean;
+}) {
+  return (
+    <svg
+      viewBox="0 0 320 130"
+      width={320 * scale}
+      height={130 * scale}
+      style={{ display: "block", opacity, transform: flip ? "scaleX(-1)" : "none" }}
+      aria-hidden="true"
+    >
+      <g fill={color}>
+        <ellipse cx="55" cy="92" rx="48" ry="34" />
+        <ellipse cx="115" cy="62" rx="58" ry="48" />
+        <ellipse cx="185" cy="52" rx="62" ry="50" />
+        <ellipse cx="255" cy="72" rx="52" ry="42" />
+        <rect x="50" y="92" width="220" height="34" rx="18" />
+      </g>
+    </svg>
+  );
+}
+
+const CLOUD_ITEMS = [
+  { top: "58%", delay: "-22s", dur: "95s",  scale: 1.4, opacity: 0.32, color: "#cfdcec", flip: false },
+  { top: "64%", delay: "-60s", dur: "130s", scale: 2.0, opacity: 0.25, color: "#bccfe6", flip: true },
+  { top: "72%", delay: "-10s", dur: "110s", scale: 1.6, opacity: 0.38, color: "#dde6f3", flip: false },
+  { top: "78%", delay: "-80s", dur: "140s", scale: 2.3, opacity: 0.22, color: "#c4d5ea", flip: true },
+  { top: "84%", delay: "-30s", dur: "90s",  scale: 1.2, opacity: 0.48, color: "#e8eef7", flip: false },
+  { top: "88%", delay: "-95s", dur: "150s", scale: 1.8, opacity: 0.35, color: "#cfdcec", flip: true },
+];
+
+function HeroClouds() {
+  return (
+    <div className="l-cloud-layer">
+      {CLOUD_ITEMS.map((c, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            top: c.top,
+            left: 0,
+            willChange: "transform, opacity",
+            animation: `ht-drift ${c.dur} linear infinite`,
+            animationDelay: c.delay,
+          }}
+        >
+          <HeroCloud scale={c.scale} opacity={c.opacity} color={c.color} flip={c.flip} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HeroGlobe() {
+  return (
+    <div className="l-globe-wrap">
+      <div className="l-globe-lands">
+        <svg
+          viewBox="0 0 4000 200"
+          width="100%"
+          height="100%"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          {[0, 2000].map((dx) => (
+            <g key={dx} transform={`translate(${dx} 0)`} fill="#2e4a3a" opacity="0.92">
+              <path d="M 70 90 Q 180 50 320 70 Q 440 80 480 130 Q 420 175 280 170 Q 150 165 90 140 Z" />
+              <path d="M 360 150 Q 420 150 450 180 L 410 195 Q 360 190 350 170 Z" />
+              <ellipse cx="560" cy="60" rx="55" ry="22" />
+              <path d="M 760 60 Q 870 50 940 70 L 950 110 Q 890 130 820 120 Z" />
+              <path d="M 870 130 Q 990 140 1010 175 L 990 195 Q 900 195 870 165 Z" />
+              <path d="M 1030 80 Q 1140 70 1200 100 L 1190 140 Q 1100 145 1040 125 Z" />
+              <path d="M 1240 60 Q 1450 40 1620 70 Q 1700 95 1650 130 Q 1480 145 1320 130 L 1240 100 Z" />
+              <ellipse cx="1700" cy="155" rx="42" ry="14" />
+              <ellipse cx="1790" cy="150" rx="22" ry="9" />
+              <path d="M 1820 165 Q 1920 160 1960 180 Q 1920 198 1840 195 Z" />
+            </g>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
+function LNav() {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <header className={`l-nav-bar${scrolled ? " l-nav-bar--scrolled" : ""}`}>
+      <Link to="/" className="l-hero-wordmark" aria-label="handitoff home">
+        handitoff
+      </Link>
+      <nav className="l-nav-right" aria-label="Main">
+        <Link to="/" className="l-nav-link l-nav-link--active">Transfer</Link>
+        <a href="#how-it-works" className="l-nav-link">How it works</a>
+        <Link to="/privacy" className="l-nav-link l-nav-link--ext">
+          Privacy
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style={{ marginLeft: 4, opacity: 0.6 }}>
+            <path d="M2 2h6v6M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </Link>
+        <Link to="/faq" className="l-nav-link l-nav-link--ext">
+          FAQ
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style={{ marginLeft: 4, opacity: 0.6 }}>
+            <path d="M2 2h6v6M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </Link>
+      </nav>
+    </header>
+  );
+}
+
 export default function Home() {
   return (
     <div className="landing">
+      <LNav />
       <LHero />
       <LHowItWorks />
       <LWhy />
@@ -289,78 +456,119 @@ function LHero() {
     });
   };
 
-  const displayJoinUrl = joinUrl === "" ? "Creating link..." : joinUrl.replace(/^https?:\/\//, "");
+  const isPending = state.pendingPeerDeviceLabel !== undefined;
 
   return (
     <section className="l-hero" aria-label="Hero">
-      <Link to="/" className="l-chrome-wm" aria-label="handitoff.io home">
-        <img
-          src="/handitoff-light-transparent.png"
-          alt=""
-          aria-hidden="true"
-          className="wordmark-logo"
-        />
-        <span className="wordmark-text">handitoff.io</span>
-      </Link>
-      <div className="l-chrome-bottom" aria-hidden="true">
-        <span>handitoff.io · 2026</span>
-        <span>Scroll ↓</span>
-      </div>
+      <HeroStars />
+      <HeroGlobe />
+      <div className="l-hero-rim" aria-hidden="true" />
+      <HeroClouds />
 
-      <div className="l-hero-grid">
-        <div className="l-type-stage">
-          <h1 className="display-title">
-            Point. <em>Tap.</em>
-            <br />
-            Receive.
-          </h1>
-          <p className="lede">
-            Scan the code with any phone. A temporary browser channel opens for the next ten
-            minutes. Files transfer directly when possible, with a relay when needed.
-          </p>
-        </div>
-        <div className="l-hero-rule" aria-hidden="true" />
-        <aside className="l-qr-panel" aria-label="Scan to join">
-          <div className="panel-head">
-            <span>Scan with camera</span>
-            <span>01</span>
-          </div>
-          <div className="qr-stage">
-            {joinUrl === "" ? (
-              <div className="status-line" role="status">
-                <span className="spinner" aria-hidden="true" />
-                <span>{state.connection === "error" ? state.error : "Creating session"}</span>
+      <main className="l-hero-main">
+        <h1 className="l-hero-title">
+          hand it off,
+          <span className="l-hero-title-italic">anywhere on earth.</span>
+        </h1>
+
+        <div className="l-ticket-wrap">
+          <div className="l-ticket-shadow">
+            <div className="l-ticket" role="region" aria-label="Session ticket">
+              <div className="l-ticket-perf" aria-hidden="true" />
+
+              <div className="l-ticket-body">
+                <div className="l-ticket-head">
+                  <span className="l-ticket-code" aria-label="Session timer">
+                    {countdown}
+                  </span>
+                  <span className="l-ticket-status" aria-live="polite">
+                    {isPending && (
+                      <>
+                        <span className="l-ticket-status-dot" aria-hidden="true" />
+                        {state.pendingPeerDeviceLabel} wants to pair
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                <h2 className="l-ticket-title">this device &rarr;</h2>
+
+                <div className="l-ticket-from-to">
+                  <div className="l-ticket-from">
+                    <div className="l-ticket-ft-label">From</div>
+                    <div className="l-ticket-ft-value">{state.deviceLabel ?? "This device"}</div>
+                  </div>
+                  <div className="l-ticket-arrow">&rarr;</div>
+                  <div className="l-ticket-to">
+                    <div className="l-ticket-ft-label">To</div>
+                    {isPending ? (
+                      <div className="l-ticket-ft-value">{state.pendingPeerDeviceLabel}</div>
+                    ) : (
+                      <div className="l-ticket-ft-value l-ticket-ft-value--muted">
+                        Awaiting scan<span className="l-blink" aria-hidden="true">_</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="l-ticket-foot" role="group" aria-label="Session actions">
+                  {isPending ? (
+                    <>
+                      <button className="l-ticket-btn" type="button" onClick={approvePeer}>
+                        Allow
+                      </button>
+                      <button
+                        className="l-ticket-btn l-ticket-btn--secondary"
+                        type="button"
+                        onClick={rejectPeer}
+                      >
+                        Reject
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="l-ticket-btn"
+                      type="button"
+                      onClick={copyLink}
+                      disabled={joinUrl === ""}
+                    >
+                      {copied ? "Copied ✓" : "Copy link"}
+                    </button>
+                  )}
+                </div>
               </div>
-            ) : (
-              <VisualQr size={300} value={joinUrl} />
-            )}
-          </div>
-          {state.pendingPeerDeviceLabel !== undefined ? (
-            <div className="panel-actions" role="group" aria-label="Pairing request">
-              <span>{state.pendingPeerDeviceLabel} wants to pair.</span>
-              <button className="button" type="button" onClick={approvePeer}>
-                Allow
-              </button>
-              <button className="button secondary" type="button" onClick={rejectPeer}>
-                Reject
-              </button>
+
+              <div className="l-ticket-stub">
+                <div className="l-ticket-stub-head">Scan to pair</div>
+                <div className="l-ticket-stub-mid">
+                  {joinUrl === "" ? (
+                    <div className="l-ticket-loading" role="status">
+                      <span
+                        className="spinner"
+                        aria-hidden="true"
+                        style={{
+                          borderColor: "rgba(250,250,250,0.2)",
+                          borderTopColor: "#fafafa",
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="l-ticket-qr-frame">
+                      <VisualQr size={160} value={joinUrl} />
+                      <div className="l-ticket-scan-line" aria-hidden="true" />
+                    </div>
+                  )}
+                </div>
+                <div className="l-ticket-stub-foot">
+                  {joinUrl === ""
+                    ? "creating session…"
+                    : "↑ point your other device"}
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="panel-actions" role="group" aria-label="Session controls">
-              <button className="button" type="button" onClick={copyLink} disabled={joinUrl === ""}>
-                {copied ? "Copied" : "Copy link"}
-              </button>
-              <button className="button secondary" type="button" onClick={refreshSession}>
-                Refresh session
-              </button>
-            </div>
-          )}
-          <div className="panel-foot">
-            <span aria-label={`Join link ${displayJoinUrl}`}>{displayJoinUrl}</span>
-            <span>{countdown}</span>
           </div>
-        </aside>
-      </div>
+        </div>
+      </main>
     </section>
   );
 }
@@ -390,13 +598,17 @@ function LHowItWorks() {
   ];
 
   return (
-    <section className="el-section">
+    <section className="el-section" id="how-it-works">
       <div className="el-container">
+        <div className="ht-kicker">
+          <span className="ht-kicker-num">§ 01</span>
+          <span>How it works</span>
+        </div>
         <h2 className="el-section-title">The whole thing, end to end.</h2>
         <div className="el-steps">
           {steps.map((s) => (
             <div key={s.n} className="el-step">
-              <div className="el-step-num">{s.n}</div>
+              <div className="el-step-num">Step {s.n}</div>
               <div className="el-step-title">{s.t}</div>
               <p className="el-step-body">{s.d}</p>
             </div>
@@ -410,17 +622,17 @@ function LHowItWorks() {
 function LWhy() {
   const reasons = [
     {
-      n: "I",
+      n: "01",
       t: "Direct",
       d: "Files travel between browsers over WebRTC when possible. If a direct path is blocked, encrypted traffic can use a relay.",
     },
     {
-      n: "II",
+      n: "02",
       t: "Disposable",
       d: "A session lasts as long as you do. Close the tab, the link is dead. Nothing to delete, because nothing was kept.",
     },
     {
-      n: "III",
+      n: "03",
       t: "Frictionless",
       d: 'No app. No account. No "Continue with Google." Just a code. Even your in-laws can use it.',
     },
@@ -429,6 +641,10 @@ function LWhy() {
   return (
     <section className="el-section el-section--dark">
       <div className="el-container">
+        <div className="ht-kicker ht-kicker--light">
+          <span className="ht-kicker-num">§ 02</span>
+          <span>Why it&apos;s different</span>
+        </div>
         <h2 className="el-why-headline">
           Moving a file shouldn&apos;t <em>require</em> a service that knows your name.
         </h2>
@@ -488,6 +704,10 @@ function LPromises() {
   return (
     <section className="el-section">
       <div className="el-container">
+        <div className="ht-kicker">
+          <span className="ht-kicker-num">§ 03</span>
+          <span>The short version</span>
+        </div>
         <h2 className="el-section-title">
           The <em>short</em> version.
         </h2>
@@ -519,7 +739,11 @@ function LPopularUses() {
   return (
     <section className="el-section">
       <div className="el-container">
-        <h2 className="el-section-title">Popular ways to use handitoff</h2>
+        <div className="ht-kicker">
+          <span className="ht-kicker-num">§ 05</span>
+          <span>Popular uses</span>
+        </div>
+        <h2 className="el-section-title">Popular ways to use handitoff.</h2>
         <div className="el-link-grid">
           {links.map((page) => (
             <Link to={page.path} className="el-link-tile" key={page.path}>
@@ -558,13 +782,16 @@ function LFaq() {
   ];
 
   return (
-    <section className="el-section">
+    <section className="el-section el-section--dark">
       <div className="el-container">
-        <h2 className="el-section-title">Things people ask.</h2>
+        <div className="ht-kicker ht-kicker--light">
+          <span className="ht-kicker-num">§ 04</span>
+          <span>Things people ask</span>
+        </div>
+        <h2 className="el-section-title" style={{ color: "#fafafa" }}>Things people ask.</h2>
         <div className="el-faq-list">
           {items.map((it, i) => (
             <div key={i} className="el-faq-row">
-              <span className="el-faq-index">{String(i + 1).padStart(2, "0")}</span>
               <h3 className="el-faq-q">{it.q}</h3>
               <p className="el-faq-a">{it.a}</p>
             </div>

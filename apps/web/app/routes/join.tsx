@@ -179,16 +179,18 @@ export default function Join({ params }: Route.ComponentProps) {
 
   return (
     <AppShell>
-      <main className="mobile-flow">
-        <div className="mobile-card">
-          <div className="section-label">No. 001 - Handshake</div>
-          <h1 className="mobile-title">{title}</h1>
-          <p>{body}</p>
-          {!isTerminal && (
-            <div className="status-line">
-              <span className="spinner" aria-hidden="true" />
+      <main className="join-flow">
+        <div className="join-card">
+          <p className="join-kicker">No. 001 — Handshake</p>
+          <h1 className="join-title">{title}</h1>
+          <p className="join-body">{body}</p>
+          {!isTerminal ? (
+            <div className="join-status">
+              <span className="join-spinner" aria-hidden="true" />
               <span>{pendingStatus}</span>
             </div>
+          ) : (
+            <p className="join-note">You can close this tab.</p>
           )}
         </div>
       </main>
