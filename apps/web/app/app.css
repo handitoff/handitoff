@@ -1356,12 +1356,6 @@ a {
 }
 
 /* ── Hero keyframe animations ── */
-@keyframes ht-drift {
-  0%   { transform: translate3d(-45vw, 0, 0); opacity: 0 }
-  10%  { opacity: 1 }
-  90%  { opacity: 1 }
-  100% { transform: translate3d(145vw, 0, 0); opacity: 0 }
-}
 @keyframes ht-float {
   0%, 100% { transform: rotate(-0.4deg) translateY(0) }
   50%      { transform: rotate(0deg)    translateY(-6px) }
@@ -1381,10 +1375,6 @@ a {
   100% { transform: translateY(100%); opacity: 0 }
 }
 @keyframes ht-blink { 0%, 49% { opacity: 1 } 50%, 100% { opacity: 0 } }
-@keyframes ht-globe-spin {
-  from { transform: translateX(0%) }
-  to   { transform: translateX(-50%) }
-}
 @keyframes ht-twinkle {
   0%, 100% { opacity: var(--star-op, 0.5) }
   50%      { opacity: calc(var(--star-op, 0.5) * 0.4) }
@@ -1431,18 +1421,9 @@ a {
 
 .l-star {
   position: absolute;
-  border-radius: 50%;
   background: #ffffff;
+  image-rendering: pixelated;
   animation: ht-twinkle 4s ease-in-out infinite;
-}
-
-/* Cloud layer */
-.l-cloud-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  overflow: hidden;
 }
 
 /* Globe */
@@ -1456,28 +1437,17 @@ a {
   border-radius: 50%;
   overflow: hidden;
   z-index: 3;
-  background: radial-gradient(
-    circle at 38% 22%,
-    #6ab2e8 0%,
-    #3a82d2 15%,
-    #1d5cb8 30%,
-    #0f3a86 50%,
-    #0a1f55 75%,
-    #050d2f 100%
-  );
-  box-shadow:
-    inset 0 30px 100px rgba(180, 220, 255, 0.18),
-    inset 60px -80px 120px rgba(0, 0, 0, 0.55),
-    0 -40px 120px rgba(74, 143, 208, 0.18);
+  background: #050d2f;
+  box-shadow: 0 -40px 120px rgba(74, 143, 208, 0.18);
 }
 
-.l-globe-lands {
+.l-globe-canvas {
   position: absolute;
-  top: 0%;
+  top: 0;
   left: 0;
-  width: 200%;
-  height: 10%;
-  animation: ht-globe-spin 80s linear infinite;
+  width: 100%;
+  height: 100%;
+  image-rendering: smooth;
 }
 
 /* Atmospheric rim glow */

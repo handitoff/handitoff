@@ -41,7 +41,7 @@ function rand(i: number) {
 const STAR_ITEMS = Array.from({ length: 140 }, (_, i) => ({
   x: rand(i * 2 + 1) * 100,
   y: rand(i * 2 + 2) * 76,
-  r: rand(i * 3 + 3) * 1.3 + 0.4,
+  r: Math.max(1, Math.round(rand(i * 3 + 3) * 2.5)),
   op: rand(i * 5 + 4) * 0.55 + 0.35,
 }));
 
@@ -68,94 +68,88 @@ function HeroStars() {
   );
 }
 
-function HeroCloud({
-  scale = 1,
-  opacity = 0.4,
-  color = "#e8eef7",
-  flip = false,
-}: {
-  scale?: number;
-  opacity?: number;
-  color?: string;
-  flip?: boolean;
-}) {
-  return (
-    <svg
-      viewBox="0 0 320 130"
-      width={320 * scale}
-      height={130 * scale}
-      style={{ display: "block", opacity, transform: flip ? "scaleX(-1)" : "none" }}
-      aria-hidden="true"
-    >
-      <g fill={color}>
-        <ellipse cx="55" cy="92" rx="48" ry="34" />
-        <ellipse cx="115" cy="62" rx="58" ry="48" />
-        <ellipse cx="185" cy="52" rx="62" ry="50" />
-        <ellipse cx="255" cy="72" rx="52" ry="42" />
-        <rect x="50" y="92" width="220" height="34" rx="18" />
-      </g>
-    </svg>
-  );
-}
-
-const CLOUD_ITEMS = [
-  { top: "58%", delay: "-22s", dur: "95s",  scale: 1.4, opacity: 0.32, color: "#cfdcec", flip: false },
-  { top: "64%", delay: "-60s", dur: "130s", scale: 2.0, opacity: 0.25, color: "#bccfe6", flip: true },
-  { top: "72%", delay: "-10s", dur: "110s", scale: 1.6, opacity: 0.38, color: "#dde6f3", flip: false },
-  { top: "78%", delay: "-80s", dur: "140s", scale: 2.3, opacity: 0.22, color: "#c4d5ea", flip: true },
-  { top: "84%", delay: "-30s", dur: "90s",  scale: 1.2, opacity: 0.48, color: "#e8eef7", flip: false },
-  { top: "88%", delay: "-95s", dur: "150s", scale: 1.8, opacity: 0.35, color: "#cfdcec", flip: true },
-];
-
-function HeroClouds() {
-  return (
-    <div className="l-cloud-layer">
-      {CLOUD_ITEMS.map((c, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            top: c.top,
-            left: 0,
-            willChange: "transform, opacity",
-            animation: `ht-drift ${c.dur} linear infinite`,
-            animationDelay: c.delay,
-          }}
-        >
-          <HeroCloud scale={c.scale} opacity={c.opacity} color={c.color} flip={c.flip} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function HeroGlobe() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const SIZE = canvas.width;
+    const R = SIZE / 2;
+    const TEX_W = 1024;
+    const TEX_H = 512;
+    let rafId = 0;
+
+    const img = new Image();
+    img.src = "/large-satellite-world-topo-map.jpg";
+    img.onload = () => {
+      const tmp = document.createElement("canvas");
+      tmp.width = TEX_W;
+      tmp.height = TEX_H;
+      const tctx = tmp.getContext("2d")!;
+      tctx.drawImage(img, 0, 0, TEX_W, TEX_H);
+      const texPx = tctx.getImageData(0, 0, TEX_W, TEX_H).data;
+
+      // Precompute spherical UV + shading for every pixel once
+      const uBase = new Float32Array(SIZE * SIZE);
+      const vRow = new Int32Array(SIZE * SIZE); // row offset pre-multiplied by TEX_W
+      const sphereMask = new Uint8Array(SIZE * SIZE);
+      const shadeDim = new Uint8Array(SIZE * SIZE);
+
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) {
+          const nx = (x - R) / R;
+          const ny = (y - R) / R;
+          if (nx * nx + ny * ny >= 1) continue;
+          const nz = Math.sqrt(1 - nx * nx - ny * ny);
+          const lat = Math.asin(-ny);
+          const lon = Math.atan2(nx, nz);
+          const idx = y * SIZE + x;
+          uBase[idx] = (lon / (2 * Math.PI) + 0.5) * TEX_W;
+          vRow[idx] = Math.min(Math.floor((0.5 - lat / Math.PI) * TEX_H), TEX_H - 1) * TEX_W;
+          sphereMask[idx] = 1;
+          // Limb darkening + directional light from upper-left
+          const limbDark = Math.pow(nz, 0.6);
+          const dirLight = Math.max(0, nx * -0.35 + ny * -0.45 + nz * 0.7);
+          const brightness = limbDark * 0.55 + dirLight * 0.45;
+          shadeDim[idx] = Math.round((1 - brightness) * 185);
+        }
+      }
+
+      const ctx = canvas.getContext("2d")!;
+      const frameData = ctx.createImageData(SIZE, SIZE);
+      const out = frameData.data;
+      let angle = 0;
+
+      function render() {
+        const uShift = (angle / (2 * Math.PI)) * TEX_W;
+        for (let i = 0; i < SIZE * SIZE; i++) {
+          if (!sphereMask[i]) continue;
+          let u = uBase[i] - uShift;
+          u = ((u % TEX_W) + TEX_W) % TEX_W;
+          const pi = (vRow[i] + Math.floor(u)) * 4;
+          const po = i * 4;
+          const dim = shadeDim[i];
+          out[po]     = texPx[pi]     - dim;
+          out[po + 1] = texPx[pi + 1] - dim;
+          out[po + 2] = texPx[pi + 2] - dim + 12; // subtle blue cast in shadows
+          out[po + 3] = 255;
+        }
+        ctx.putImageData(frameData, 0, 0);
+        angle = (angle + 0.003) % (2 * Math.PI);
+        rafId = requestAnimationFrame(render);
+      }
+
+      rafId = requestAnimationFrame(render);
+    };
+
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
   return (
-    <div className="l-globe-wrap">
-      <div className="l-globe-lands">
-        <svg
-          viewBox="0 0 4000 200"
-          width="100%"
-          height="100%"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {[0, 2000].map((dx) => (
-            <g key={dx} transform={`translate(${dx} 0)`} fill="#2e4a3a" opacity="0.92">
-              <path d="M 70 90 Q 180 50 320 70 Q 440 80 480 130 Q 420 175 280 170 Q 150 165 90 140 Z" />
-              <path d="M 360 150 Q 420 150 450 180 L 410 195 Q 360 190 350 170 Z" />
-              <ellipse cx="560" cy="60" rx="55" ry="22" />
-              <path d="M 760 60 Q 870 50 940 70 L 950 110 Q 890 130 820 120 Z" />
-              <path d="M 870 130 Q 990 140 1010 175 L 990 195 Q 900 195 870 165 Z" />
-              <path d="M 1030 80 Q 1140 70 1200 100 L 1190 140 Q 1100 145 1040 125 Z" />
-              <path d="M 1240 60 Q 1450 40 1620 70 Q 1700 95 1650 130 Q 1480 145 1320 130 L 1240 100 Z" />
-              <ellipse cx="1700" cy="155" rx="42" ry="14" />
-              <ellipse cx="1790" cy="150" rx="22" ry="9" />
-              <path d="M 1820 165 Q 1920 160 1960 180 Q 1920 198 1840 195 Z" />
-            </g>
-          ))}
-        </svg>
-      </div>
+    <div className="l-globe-wrap" aria-hidden="true">
+      <canvas ref={canvasRef} width={512} height={512} className="l-globe-canvas" />
     </div>
   );
 }
@@ -463,7 +457,6 @@ function LHero() {
       <HeroStars />
       <HeroGlobe />
       <div className="l-hero-rim" aria-hidden="true" />
-      <HeroClouds />
 
       <main className="l-hero-main">
         <h1 className="l-hero-title">
