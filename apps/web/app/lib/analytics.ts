@@ -55,16 +55,11 @@ export function trackEvent(
   const url = `${config.apiUrl.replace(/\/$/, "")}/api/analytics/events`;
   try {
     const payload = JSON.stringify(body);
-    if (navigator.sendBeacon !== undefined) {
-      const blob = new Blob([payload], { type: "application/json" });
-      if (navigator.sendBeacon(url, blob)) {
-        return;
-      }
-    }
     void fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "text/plain;charset=UTF-8" },
       body: payload,
+      credentials: "omit",
       keepalive: true,
     }).catch(() => undefined);
   } catch {

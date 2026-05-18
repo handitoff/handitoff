@@ -381,6 +381,9 @@ function withCors(response: Response, request: Request): Response {
   headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
   headers.set("access-control-allow-headers", "authorization,content-type,x-admin-token,x-request-id");
   headers.set("access-control-expose-headers", "x-request-id");
+  if (origin !== null) {
+    headers.set("access-control-allow-credentials", "true");
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
