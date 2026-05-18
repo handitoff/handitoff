@@ -1,0 +1,28 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/.prisma/client"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AnalyticsEvent {
+  id          BigInt   @id @default(autoincrement())
+  eventName   String   @map("event_name")
+  anonymousId String   @map("anonymous_id")
+  sessionId   String?  @map("session_id")
+  transferId  String?  @map("transfer_id")
+  properties  Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "analytics_events_created_at_idx")
+  @@index([eventName], map: "analytics_events_event_name_idx")
+  @@index([sessionId], map: "analytics_events_session_id_idx")
+  @@index([transferId], map: "analytics_events_transfer_id_idx")
+  @@map("analytics_events")
+}

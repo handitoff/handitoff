@@ -10,18 +10,28 @@
     }
   },
   "dependencies": {
+    "@handitoff/abuse": "0.0.0",
+    "@handitoff/analytics": "0.0.0",
     "@handitoff/config": "0.0.0",
     "@handitoff/protocol": "0.0.0",
     "@handitoff/turn": "0.0.0",
-    "@handitoff/abuse": "0.0.0",
-    "@handitoff/analytics": "0.0.0"
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "dotenv": "^17.4.2"
   },
   "scripts": {
-    "prebuild": "npm run build -w @handitoff/protocol && npm run build -w @handitoff/config && npm run build -w @handitoff/turn && npm run build -w @handitoff/abuse && npm run build -w @handitoff/analytics",
+    "prisma:generate": "prisma generate --config prisma.config.ts",
+    "prisma:migrate:deploy": "prisma migrate deploy --config prisma.config.ts",
+    "prisma:migrate:dev": "prisma migrate dev --config prisma.config.ts",
+    "prisma:db:push": "prisma db push --config prisma.config.ts",
+    "prebuild": "npm run build -w @handitoff/protocol && npm run build -w @handitoff/config && npm run build -w @handitoff/turn && npm run build -w @handitoff/abuse && npm run build -w @handitoff/analytics && npm run prisma:generate",
     "build": "tsc -b",
     "dev": "concurrently \"tsc -b --watch --preserveWatchOutput\" \"node --watch dist/server.js\" --names \"tsc,api\" --prefix-colors \"bgGreen.bold,bgCyan.bold\"",
     "start": "node dist/server.js",
-    "typecheck": "tsc -b --pretty false",
+    "typecheck": "npm run prisma:generate && tsc -b --pretty false",
     "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "prisma": "^7.8.0"
   }
 }

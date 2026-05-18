@@ -24,6 +24,7 @@ function defaultPublicConfig(): PublicConfig {
     wsUrl: sameOriginWsUrl,
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     billing: { enabled: false },
+    analytics: { enabled: false },
     limits: {
       unpairedSessionTtlSeconds: 600,
       pairedSessionTtlSeconds: 1800,
@@ -60,6 +61,10 @@ export function loadPublicRuntimeConfig(overrides?: Partial<PublicConfig>): Publ
     billing: {
       ...defaults.billing,
       ...runtimeOverrides?.billing,
+    },
+    analytics: {
+      ...defaults.analytics,
+      ...runtimeOverrides?.analytics,
     },
     limits: {
       ...defaults.limits,

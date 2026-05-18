@@ -14,4 +14,5 @@ export default [
   route("privacy", "routes/privacy.tsx"),
   route("security", "routes/security.tsx"),
   route("terms", "routes/terms.tsx"),
+  route("admin/analytics", "routes/admin-analytics.tsx"),
 ] satisfies RouteConfig;

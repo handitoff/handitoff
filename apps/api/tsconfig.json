@@ -13,5 +13,5 @@
     { "path": "../../packages/abuse" },
     { "path": "../../packages/analytics" }
   ],
-  "include": ["src/**/*.ts", "src/**/*.test.ts"]
+  "include": ["src/**/*.ts", "src/**/*.test.ts", "src/.prisma/client/**/*.ts"]
 }

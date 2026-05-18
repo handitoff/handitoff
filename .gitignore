@@ -2,6 +2,7 @@
 **/dist/
 **/build/
 **/.react-router/
+apps/api/src/.prisma/
 **/coverage/
 .env
 .env.*

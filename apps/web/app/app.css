@@ -2589,3 +2589,148 @@ a {
     border-right: none;
   }
 }
+/* Internal analytics dashboard */
+.admin-analytics {
+  min-height: 100svh;
+  padding: 32px;
+  background: #f6f4ef;
+  color: #111;
+  font-family: "Inter Tight", system-ui, sans-serif;
+}
+
+.admin-analytics-head,
+.admin-controls,
+.admin-card-grid,
+.admin-grid,
+.admin-row,
+.admin-failure {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-analytics-head {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  margin-bottom: 24px;
+}
+
+.admin-kicker {
+  margin: 0 0 4px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.admin-analytics h1 {
+  margin: 0;
+  font-size: 40px;
+}
+
+.admin-controls {
+  grid-template-columns: 160px 220px;
+}
+
+.admin-controls select,
+.admin-controls input {
+  height: 40px;
+  border: 1px solid #c9c2b6;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #fff;
+  color: #111;
+}
+
+.admin-error {
+  padding: 12px;
+  border: 1px solid #9f1d1d;
+  border-radius: 6px;
+  background: #fff1f1;
+  color: #7a1212;
+}
+
+.admin-card-grid {
+  grid-template-columns: repeat(9, minmax(120px, 1fr));
+  margin-bottom: 20px;
+}
+
+.admin-card,
+.admin-panel {
+  border: 1px solid #d8d1c6;
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.admin-card {
+  padding: 14px;
+}
+
+.admin-card span,
+.admin-muted,
+.admin-row span,
+.admin-failure span {
+  color: #665f55;
+}
+
+.admin-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+}
+
+.admin-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-panel {
+  padding: 16px;
+}
+
+.admin-panel-wide {
+  grid-column: span 3;
+}
+
+.admin-panel h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+
+.admin-row {
+  grid-template-columns: minmax(96px, 1fr) 2fr auto;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.admin-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ebe4da;
+}
+
+.admin-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #111;
+}
+
+.admin-failure {
+  grid-template-columns: 160px 160px 120px 1fr 180px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid #ece5da;
+}
+
+@media (max-width: 1000px) {
+  .admin-analytics-head,
+  .admin-card-grid,
+  .admin-grid,
+  .admin-panel-wide {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-controls,
+  .admin-failure {
+    grid-template-columns: 1fr;
+  }
+}

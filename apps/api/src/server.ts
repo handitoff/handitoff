@@ -10,10 +10,11 @@ import { issueTurnCredential } from "@handitoff/turn";
 import { DEFAULT_HOSTED_ABUSE_LIMITS } from "@handitoff/abuse";
 import { ConsoleAnalyticsSink, NoopAnalyticsSink } from "@handitoff/analytics";
 
-import { createApiApp } from "./app.js";
+import { createApiApp, type ApiAppOptions } from "./app.js";
 import { RedisTcpClient } from "./redis-client.js";
 import { SignalingHub } from "./signaling.js";
 import { InMemorySessionStore, RedisSessionStore } from "./session-store.js";
+import { PrismaAnalyticsStore } from "./analytics-store.js";
 import { handleWebSocketUpgrade } from "./websocket.js";
 
 export function createNodeServer() {
@@ -26,23 +27,28 @@ export function createNodeServer() {
       : new RedisSessionStore(new RedisTcpClient(config.redisUrl));
 
   const analytics =
-    process.env.HANDITOFF_ANALYTICS_ENABLED === "true"
-      ? new ConsoleAnalyticsSink()
-      : new NoopAnalyticsSink();
+    config.publicConfig.analytics.enabled && config.databaseUrl !== undefined
+      ? new PrismaAnalyticsStore(config.databaseUrl)
+      : config.publicConfig.analytics.enabled
+        ? new ConsoleAnalyticsSink()
+        : new NoopAnalyticsSink();
 
   const abuseLimits =
     process.env.HANDITOFF_ABUSE_ENABLED === "true" ? DEFAULT_HOSTED_ABUSE_LIMITS : undefined;
 
   const getIceServers = config.turn ? buildTurnIceServersGetter(config.turn) : undefined;
 
-  const hub = new SignalingHub({ config, store, analytics });
+  const hub = new SignalingHub({ config, store });
 
-  const appOptions: Parameters<typeof createApiApp>[0] = {
+  const appOptions: ApiAppOptions = {
     config,
     store,
     analytics,
     onSessionExpired: (sessionId) => hub.expireSession(sessionId),
   };
+  if (analytics instanceof PrismaAnalyticsStore && config.adminToken !== undefined) {
+    appOptions.analyticsDashboard = analytics;
+  }
   if (abuseLimits !== undefined) {
     appOptions.abuseLimits = abuseLimits;
   }

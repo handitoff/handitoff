@@ -7,6 +7,7 @@ describe("loadPublicConfig", () => {
     const config = loadPublicConfig({});
 
     expect(config.billing.enabled).toBe(false);
+    expect(config.analytics.enabled).toBe(false);
     expect(config.features.turnEnabled).toBe(false);
     expect(config.features.multiDeviceRooms).toBe(false);
     expect(config.features.accounts).toBe(false);
@@ -20,11 +21,13 @@ describe("loadPublicConfig", () => {
       HANDITOFF_API_URL: "https://api.handitoff.io",
       HANDITOFF_WS_URL: "wss://api.handitoff.io/ws",
       HANDITOFF_BILLING_ENABLED: "true",
+      HANDITOFF_ANALYTICS_ENABLED: "true",
       HANDITOFF_TURN_ENABLED: "true",
     });
 
     expect(config.appUrl).toBe("https://handitoff.io");
     expect(config.billing.enabled).toBe(true);
+    expect(config.analytics.enabled).toBe(true);
     expect(config.features.turnEnabled).toBe(true);
   });
 
@@ -64,5 +67,15 @@ describe("loadServerConfig", () => {
     expect(config.rateLimits.maxActiveSessionsPerIp).toBe(50);
     expect(config.rateLimits.maxJoinAttemptsPerPublicCode).toBe(10);
     expect(config.rateLimits.maxSignalingMessagesPerMinutePerSession).toBe(300);
+  });
+
+  it("loads private analytics server settings", () => {
+    const config = loadServerConfig({
+      DATABASE_URL: "postgres://localhost/handitoff",
+      HANDITOFF_ADMIN_TOKEN: "secret",
+    });
+
+    expect(config.databaseUrl).toBe("postgres://localhost/handitoff");
+    expect(config.adminToken).toBe("secret");
   });
 });

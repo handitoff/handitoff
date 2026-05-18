@@ -12,6 +12,7 @@ describe("HanditoffApiClient", () => {
           wsUrl: "ws://localhost:8787/ws",
           iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
           billing: { enabled: false },
+          analytics: { enabled: true },
           limits: { unpairedSessionTtlSeconds: 600, pairedSessionTtlSeconds: 1800 },
           features: { turnEnabled: false, multiDeviceRooms: false, accounts: false },
         }),

@@ -18,6 +18,7 @@ import {
 } from "../lib/session-store";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
 import { seoMeta } from "../lib/seo";
+import { sizeBucketForBytes, trackEvent } from "../lib/analytics";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
 import { WebRtcPeer, type WebRtcPeerEvent } from "../lib/webrtc-peer";
 
@@ -29,6 +30,15 @@ type StoredSessionContext = {
   peerDeviceId: string;
   peerDeviceLabel: string;
   role: "host" | "guest";
+};
+
+type TransferAnalyticsState = {
+  fileCount: number;
+  totalBytes: number;
+  completedBytes: number;
+  startedAt: number;
+  completed: boolean;
+  failed: boolean;
 };
 
 export function meta({ params }: Route.MetaArgs) {
@@ -52,7 +62,9 @@ export default function Session({ params }: Route.ComponentProps) {
   const localPublicKeyRef = useRef<JsonWebKey | undefined>(undefined);
   const pendingPeerPublicKeyRef = useRef<JsonWebKey | undefined>(undefined);
   const cryptoFailureMessageRef = useRef<string | undefined>(undefined);
+  const transferAnalyticsRef = useRef<Map<string, TransferAnalyticsState>>(new Map());
   const stateRef = useRef<ClientSessionState>(initialClientSessionState);
+  const networkTypeRef = useRef<"local" | "relay" | "unknown">("unknown");
   const configRef = useRef(loadPublicRuntimeConfig());
   const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
   const [, setChosenFiles] = useState<File[]>([]);
@@ -134,6 +146,65 @@ export default function Session({ params }: Route.ComponentProps) {
     });
   }, []);
 
+  const getAnalyticsContext = useCallback(() => {
+    const current = stateRef.current;
+    return current.sessionId === undefined ? {} : { sessionId: current.sessionId };
+  }, []);
+
+  const trackTransferCompleted = useCallback(
+    (snapshot: TransferProgressSnapshot) => {
+      const transfer = transferAnalyticsRef.current.get(snapshot.transferId);
+      if (transfer === undefined || transfer.completed || transfer.failed) {
+        return;
+      }
+      transfer.completedBytes += snapshot.totalBytes;
+      if (transfer.completedBytes < transfer.totalBytes) {
+        return;
+      }
+      transfer.completed = true;
+      const durationMs = Math.max(1, Date.now() - transfer.startedAt);
+      const averageMbps = (transfer.totalBytes * 8) / durationMs / 1000;
+      trackEvent(
+        "transfer_completed",
+        {
+          fileCount: transfer.fileCount,
+          totalBytes: transfer.totalBytes,
+          sizeBucket: sizeBucketForBytes(transfer.totalBytes),
+          durationMs,
+          averageMbps: Number(averageMbps.toFixed(2)),
+          connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+        },
+        { ...getAnalyticsContext(), transferId: snapshot.transferId },
+      );
+    },
+    [getAnalyticsContext],
+  );
+
+  const trackTransferFailed = useCallback(
+    (snapshot: TransferProgressSnapshot) => {
+      const transfer = transferAnalyticsRef.current.get(snapshot.transferId);
+      if (transfer !== undefined) {
+        if (transfer.failed || transfer.completed) {
+          return;
+        }
+        transfer.failed = true;
+      }
+      trackEvent(
+        snapshot.status === "canceled" ? "transfer_cancelled" : "transfer_failed",
+        {
+          fileCount: transfer?.fileCount ?? 1,
+          totalBytes: transfer?.totalBytes ?? snapshot.totalBytes,
+          sizeBucket: sizeBucketForBytes(transfer?.totalBytes ?? snapshot.totalBytes),
+          connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+          failureCode: snapshot.status === "canceled" ? "cancelled" : "transfer_failed",
+          errorStage: snapshot.direction,
+        },
+        { ...getAnalyticsContext(), transferId: snapshot.transferId },
+      );
+    },
+    [getAnalyticsContext],
+  );
+
   const ensureTransferController = useCallback(() => {
     if (transferRef.current !== undefined || aesKeyRef.current === undefined) {
       return transferRef.current;
@@ -157,14 +228,40 @@ export default function Session({ params }: Route.ComponentProps) {
       },
       events: {
         // Product decision for MVP: an approved peer's file offer is accepted automatically.
-        onOffer: () => true,
+        onOffer: (offer) => {
+          transferAnalyticsRef.current.set(offer.transferId, {
+            fileCount: offer.files.length,
+            totalBytes: offer.totalSize,
+            completedBytes: 0,
+            startedAt: Date.now(),
+            completed: false,
+            failed: false,
+          });
+          trackEvent(
+            "transfer_started",
+            {
+              fileCount: offer.files.length,
+              totalBytes: offer.totalSize,
+              sizeBucket: sizeBucketForBytes(offer.totalSize),
+              connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+            },
+            { ...getAnalyticsContext(), transferId: offer.transferId },
+          );
+          return true;
+        },
         onProgress: snapshotToTransferItem,
-        onComplete: snapshotToTransferItem,
-        onError: snapshotToTransferItem,
+        onComplete: (snapshot) => {
+          snapshotToTransferItem(snapshot);
+          trackTransferCompleted(snapshot);
+        },
+        onError: (snapshot) => {
+          snapshotToTransferItem(snapshot);
+          trackTransferFailed(snapshot);
+        },
       },
     });
     return transferRef.current;
-  }, [snapshotToTransferItem]);
+  }, [getAnalyticsContext, snapshotToTransferItem, trackTransferCompleted, trackTransferFailed]);
 
   const completeCryptoExchange = useCallback(
     async (peerPublicKey: JsonWebKey) => {
@@ -243,6 +340,7 @@ export default function Session({ params }: Route.ComponentProps) {
         (event.state === "connected" || event.state === "completed")
       ) {
         dispatch({ type: "webrtc:connected" });
+        trackEvent("peer_connected", undefined, getAnalyticsContext());
         return;
       }
       if (event.type === "data-channel-open") {
@@ -325,6 +423,16 @@ export default function Session({ params }: Route.ComponentProps) {
       }
       if (event.type === "network-type") {
         setNetworkType(event.networkType);
+        networkTypeRef.current = event.networkType;
+        trackEvent(
+          "connection_type_detected",
+          {
+            connectionType: toAnalyticsConnectionType(event.networkType),
+            localCandidateType: event.localCandidateType,
+            remoteCandidateType: event.remoteCandidateType,
+          },
+          getAnalyticsContext(),
+        );
         return;
       }
       if (event.type === "failed") {
@@ -332,9 +440,14 @@ export default function Session({ params }: Route.ComponentProps) {
           return;
         }
         dispatch({ type: "webrtc:failed", message: event.message });
+        trackEvent(
+          "peer_connection_failed",
+          { failureCode: "webrtc_failed", errorStage: "webrtc" },
+          getAnalyticsContext(),
+        );
       }
     },
-    [ensureTransferController, sendPeerControl, sendSignal],
+    [ensureTransferController, getAnalyticsContext, sendPeerControl, sendSignal],
   );
 
   const createPeer = useCallback(
@@ -549,16 +662,50 @@ export default function Session({ params }: Route.ComponentProps) {
       return;
     }
     try {
-      controller.sendFiles(selected);
+      const transferId = controller.sendFiles(selected);
+      const totalBytes = selected.reduce((total, file) => total + file.size, 0);
+      transferAnalyticsRef.current.set(transferId, {
+        fileCount: selected.length,
+        totalBytes,
+        completedBytes: 0,
+        startedAt: Date.now(),
+        completed: false,
+        failed: false,
+      });
+      trackEvent(
+        "transfer_started",
+        {
+          fileCount: selected.length,
+          totalBytes,
+          sizeBucket: sizeBucketForBytes(totalBytes),
+          connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+        },
+        { ...getAnalyticsContext(), transferId },
+      );
     } catch (error) {
       dispatch({
         type: "data-channel:failed",
         message: error instanceof Error ? error.message : "Could not start file transfer.",
       });
+      trackEvent(
+        "transfer_failed",
+        { failureCode: "start_failed", errorStage: "start" },
+        getAnalyticsContext(),
+      );
     }
   };
   const cancelTransfer = (id: string, fileId: string | undefined) => {
-    transferRef.current?.cancelTransfer(id.split(":")[0] ?? id, fileId);
+    const transferId = id.split(":")[0] ?? id;
+    transferRef.current?.cancelTransfer(transferId, fileId);
+    trackEvent(
+      "transfer_cancelled",
+      {
+        connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+        failureCode: "cancelled",
+        errorStage: "user",
+      },
+      { ...getAnalyticsContext(), transferId },
+    );
   };
   const retryTransfer = (id: string) => {
     void transferRef.current?.retryTransfer(id.split(":")[0] ?? id).catch((error: unknown) => {
@@ -579,6 +726,7 @@ export default function Session({ params }: Route.ComponentProps) {
     }
     teardownPeer();
     clearStoredSessionContext();
+    trackEvent("session_ended", undefined, getAnalyticsContext());
     navigate("/");
   };
 
@@ -1090,6 +1238,12 @@ function hasActiveTransfer(transfer: ClientSessionState["transfer"]): boolean {
       item.status !== "canceled"
     );
   });
+}
+
+function toAnalyticsConnectionType(networkType: "local" | "relay" | "unknown"): string {
+  if (networkType === "local") return "direct";
+  if (networkType === "relay") return "relayed";
+  return "unknown";
 }
 
 async function fetchConfig(signal: AbortSignal) {

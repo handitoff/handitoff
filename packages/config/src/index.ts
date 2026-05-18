@@ -6,6 +6,9 @@ export type PublicConfig = {
   billing: {
     enabled: boolean;
   };
+  analytics: {
+    enabled: boolean;
+  };
   limits: {
     unpairedSessionTtlSeconds: number;
     pairedSessionTtlSeconds: number;
@@ -28,6 +31,8 @@ export type PublicIceServer = {
 export type ServerConfig = {
   publicConfig: PublicConfig;
   redisUrl?: string;
+  databaseUrl?: string;
+  adminToken?: string;
   rateLimits: {
     maxActiveSessionsPerIp: number;
     maxJoinAttemptsPerPublicCode: number;
@@ -58,6 +63,9 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
   wsUrl: "ws://localhost:8787/ws",
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   billing: {
+    enabled: false,
+  },
+  analytics: {
     enabled: false,
   },
   limits: {
@@ -98,6 +106,9 @@ export function loadPublicConfig(env: ConfigEnv = process.env): PublicConfig {
     billing: {
       enabled: readBoolean(env, "HANDITOFF_BILLING_ENABLED", false),
     },
+    analytics: {
+      enabled: readBoolean(env, "HANDITOFF_ANALYTICS_ENABLED", false),
+    },
     limits: {
       unpairedSessionTtlSeconds: readPositiveInteger(
         env,
@@ -133,6 +144,8 @@ export function loadPublicConfig(env: ConfigEnv = process.env): PublicConfig {
 
 export function loadServerConfig(env: ConfigEnv = process.env): ServerConfig {
   const redisUrl = emptyToUndefined(env.HANDITOFF_REDIS_URL);
+  const databaseUrl = emptyToUndefined(env.DATABASE_URL);
+  const adminToken = emptyToUndefined(env.HANDITOFF_ADMIN_TOKEN);
   const turnSecret = emptyToUndefined(env.HANDITOFF_TURN_SECRET);
   const turnUrls = readStringArray(env, "HANDITOFF_TURN_URLS");
   const config: ServerConfig = {
@@ -158,6 +171,12 @@ export function loadServerConfig(env: ConfigEnv = process.env): ServerConfig {
 
   if (redisUrl !== undefined) {
     config.redisUrl = redisUrl;
+  }
+  if (databaseUrl !== undefined) {
+    config.databaseUrl = databaseUrl;
+  }
+  if (adminToken !== undefined) {
+    config.adminToken = adminToken;
   }
 
   if (turnSecret !== undefined && turnUrls.length > 0) {

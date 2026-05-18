@@ -13,6 +13,7 @@ const config: ServerConfig = {
     wsUrl: "ws://localhost:8787/ws",
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     billing: { enabled: false },
+    analytics: { enabled: true },
     limits: {
       unpairedSessionTtlSeconds: 60,
       pairedSessionTtlSeconds: 120,

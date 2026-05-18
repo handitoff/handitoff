@@ -5,11 +5,14 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
 } from "react-router";
+import { useEffect } from "react";
 
 import type { Route } from "./+types/root";
 import appStylesHref from "./app.css?url";
 import { publicRuntimeConfigScript } from "./lib/runtime-config";
+import { trackEvent } from "./lib/analytics";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -46,6 +49,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    trackEvent("page_view", { page: location.pathname.slice(0, 80) });
+  }, [location.pathname]);
+
   return <Outlet />;
 }
 

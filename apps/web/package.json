@@ -14,6 +14,7 @@
   "dependencies": {
     "@handitoff/config": "0.0.0",
     "@handitoff/crypto": "0.0.0",
+    "@handitoff/analytics": "0.0.0",
     "@handitoff/protocol": "0.0.0",
     "@handitoff/transfer": "0.0.0",
     "@react-router/node": "7.14.0",

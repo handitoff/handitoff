@@ -14,6 +14,7 @@ import { loadPublicRuntimeConfig } from "../lib/runtime-config";
 import { seoMeta } from "../lib/seo";
 import { seoPages } from "../lib/seo-pages";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
+import { trackEvent } from "../lib/analytics";
 
 export function meta() {
   return seoMeta({
@@ -209,7 +210,7 @@ export default function Home() {
 
 function LHero() {
   const navigate = useNavigate();
-  const [restartKey, setRestartKey] = useState(0);
+  const [restartKey] = useState(0);
   const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
   const [joinUrl, setJoinUrl] = useState("");
   const [expiresAt, setExpiresAt] = useState<number | undefined>();
@@ -280,6 +281,8 @@ function LHero() {
             });
             setJoinUrl(message.joinUrl);
             setExpiresAt(message.expiresAt);
+            trackEvent("session_created", undefined, { sessionId: message.sessionId });
+            trackEvent("qr_visible", undefined, { sessionId: message.sessionId });
             return;
           }
 
@@ -313,17 +316,20 @@ function LHero() {
             window.sessionStorage.setItem("handitoff.connectedPeerLabel", peerLabel);
             window.sessionStorage.setItem("handitoff.connectedCode", current.publicCode ?? "");
             window.sessionStorage.setItem("handitoff.role", "host");
+            trackEvent("peer_connected", undefined, { sessionId: current.sessionId });
             navigate(`/s/${current.publicCode ?? ""}`);
             return;
           }
 
           if (message.type === "session:expired") {
             dispatch({ type: "session:expired" });
+            trackEvent("session_expired", undefined, { sessionId: stateRef.current.sessionId });
             return;
           }
 
           if (message.type === "session:ended") {
             dispatch({ type: "session:ended" });
+            trackEvent("session_ended", undefined, { sessionId: stateRef.current.sessionId });
             return;
           }
 
@@ -410,6 +416,7 @@ function LHero() {
       deviceId: state.deviceId,
       peerDeviceId: state.pendingPeerDeviceId,
     });
+    trackEvent("peer_approved", undefined, { sessionId: state.sessionId });
   };
 
   const rejectPeer = () => {
@@ -426,18 +433,7 @@ function LHero() {
       deviceId: state.deviceId,
       peerDeviceId: state.pendingPeerDeviceId,
     });
-  };
-
-  const refreshSession = () => {
-    if (state.sessionId !== undefined && state.deviceId !== undefined) {
-      socketRef.current?.send({
-        type: "session:end",
-        sessionId: state.sessionId,
-        deviceId: state.deviceId,
-      });
-    }
-    socketRef.current?.close();
-    setRestartKey((key) => key + 1);
+    trackEvent("peer_rejected", undefined, { sessionId: state.sessionId });
   };
 
   const copyLink = () => {

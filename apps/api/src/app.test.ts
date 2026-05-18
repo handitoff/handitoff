@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ServerConfig } from "@handitoff/config";
+import { InMemoryAnalyticsSink } from "@handitoff/analytics";
 
 import { createApiApp } from "./app.js";
 import { FixedWindowRateLimiter } from "./rate-limits.js";
@@ -12,6 +13,7 @@ const config: ServerConfig = {
     wsUrl: "ws://localhost:8787/ws",
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     billing: { enabled: false },
+    analytics: { enabled: true },
     limits: {
       unpairedSessionTtlSeconds: 60,
       pairedSessionTtlSeconds: 120,
@@ -194,6 +196,75 @@ describe("api app", () => {
     const body = (await response.json()) as Record<string, unknown>;
 
     expect(body.iceServers).toEqual(config.publicConfig.iceServers);
+  });
+
+  it("ingests allowlisted sanitized analytics events", async () => {
+    const analytics = new InMemoryAnalyticsSink();
+    const app = createApiApp({
+      config,
+      store: new InMemorySessionStore(),
+      analytics,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const response = await postJson(app, "/api/analytics/events", {
+      eventName: "transfer_completed",
+      anonymousId: "anonymous-1",
+      sessionId: "session-1",
+      transferId: "transfer-1",
+      properties: {
+        browser: "Chrome",
+        fileName: "secret.pdf",
+        joinUrl: "https://handitoff.io/join/ABC234",
+        totalBytes: 1024,
+      },
+    });
+
+    expect(response.status).toBe(202);
+    expect(analytics.events[0]).toEqual({
+      eventName: "transfer_completed",
+      anonymousId: "anonymous-1",
+      sessionId: "session-1",
+      transferId: "transfer-1",
+      properties: { browser: "Chrome", totalBytes: 1024 },
+    });
+  });
+
+  it("rejects unknown analytics event names", async () => {
+    const analytics = new InMemoryAnalyticsSink();
+    const app = createApiApp({
+      config,
+      store: new InMemorySessionStore(),
+      analytics,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const response = await postJson(app, "/api/analytics/events", {
+      eventName: "google_analytics",
+      anonymousId: "anonymous-1",
+    });
+
+    expect(response.status).toBe(400);
+    expect(analytics.events).toHaveLength(0);
+  });
+
+  it("protects admin analytics", async () => {
+    const app = createApiApp({
+      config: { ...config, adminToken: "secret" },
+      analyticsDashboard: { getDashboard: vi.fn().mockResolvedValue({ ok: true }) },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    expect((await app(new Request("http://localhost/api/admin/analytics"))).status).toBe(403);
+
+    const response = await app(
+      new Request("http://localhost/api/admin/analytics?range=7d", {
+        headers: { authorization: "Bearer secret" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
   });
 });
 

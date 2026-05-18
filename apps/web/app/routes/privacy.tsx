@@ -56,6 +56,25 @@ export default function Privacy() {
 
         <section className="lp-section">
           <div className="lp-grid">
+            <span className="lp-index">04</span>
+            <div className="lp-body">
+              <h2 className="lp-heading">Product analytics</h2>
+              <p>
+                We collect basic technical analytics to understand whether transfers connect and
+                complete successfully. This may include an anonymous browser/device ID, browser and
+                operating system, device type, connection type, transfer size range, transfer
+                duration, whether a transfer succeeded or failed, and technical failure codes.
+              </p>
+              <p>
+                We do not collect file names, file contents, file previews, file hashes, or local
+                file paths in product analytics.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="lp-section">
+          <div className="lp-grid">
             <span className="lp-index">03</span>
             <div className="lp-body">
               <h2 className="lp-heading">Device labels</h2>

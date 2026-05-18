@@ -1,5 +1,5 @@
 {
-  "files": [],
+  "files": ["apps/api/prisma.config.ts"],
   "references": [
     { "path": "./packages/config" },
     { "path": "./packages/protocol" },

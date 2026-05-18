@@ -3,7 +3,12 @@ import { loadServerConfig } from "@handitoff/config";
 import { isPublicCode } from "@handitoff/protocol";
 import type { HostedAbuseLimits } from "@handitoff/abuse";
 import { evaluateAbuseSignal } from "@handitoff/abuse";
-import type { AnalyticsSink } from "@handitoff/analytics";
+import {
+  isAnalyticsEventName,
+  normalizeAnalyticsEvent,
+  type AnalyticsEventInput,
+  type AnalyticsSink,
+} from "@handitoff/analytics";
 
 import { FixedWindowRateLimiter } from "./rate-limits.js";
 import {
@@ -22,10 +27,18 @@ export type ApiAppOptions = {
   logger?: Pick<Console, "info" | "warn" | "error">;
   getIceServers?: () => Promise<PublicIceServer[]> | PublicIceServer[];
   analytics?: AnalyticsSink;
+  analyticsDashboard?: AnalyticsDashboardStore;
   abuseLimits?: HostedAbuseLimits;
 };
 
+export type AnalyticsRange = "24h" | "7d" | "30d";
+
+export type AnalyticsDashboardStore = {
+  getDashboard(range: AnalyticsRange): Promise<unknown>;
+};
+
 type ApiErrorCode =
+  | "analytics_unavailable"
   | "bad_json"
   | "forbidden"
   | "invalid_device"
@@ -45,6 +58,14 @@ type EndSessionBody = {
   reason?: unknown;
 };
 
+type AnalyticsEventBody = {
+  eventName?: unknown;
+  anonymousId?: unknown;
+  sessionId?: unknown;
+  transferId?: unknown;
+  properties?: unknown;
+};
+
 export function createApiApp(options: ApiAppOptions = {}) {
   const config = options.config ?? loadServerConfig();
   const store = options.store ?? new InMemorySessionStore();
@@ -53,6 +74,7 @@ export function createApiApp(options: ApiAppOptions = {}) {
   const logger = options.logger ?? console;
   const getIceServers = options.getIceServers;
   const analytics = options.analytics;
+  const analyticsDashboard = options.analyticsDashboard;
   const abuseLimits = options.abuseLimits;
 
   return async function handleRequest(request: Request): Promise<Response> {
@@ -71,7 +93,6 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
       const expiredSessions = await store.sweepExpired(now());
       for (const session of expiredSessions) {
-        analytics?.record({ name: "session_expired" });
         options.onSessionExpired?.(session.id, session.publicCode);
       }
 
@@ -83,7 +104,18 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/sessions") {
         return withCors(
-          await createSession(request, requestId, config, store, analytics, abuseLimits),
+          await createSession(request, requestId, config, store, abuseLimits),
+          request,
+        );
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/analytics/events") {
+        return withCors(await recordAnalyticsEvent(request, requestId, analytics), request);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/admin/analytics") {
+        return withCors(
+          await getAdminAnalytics(request, requestId, config.adminToken, analyticsDashboard),
           request,
         );
       }
@@ -119,7 +151,6 @@ async function createSession(
   requestId: string,
   config: ServerConfig,
   store: SessionStore,
-  analytics: AnalyticsSink | undefined,
   abuseLimits: HostedAbuseLimits | undefined,
 ): Promise<Response> {
   const body = await readJson<CreateSessionBody>(request, requestId);
@@ -171,7 +202,6 @@ async function createSession(
     ...(hostUserAgent === undefined ? {} : { hostUserAgent }),
   };
   const session = await store.create(createInput);
-  analytics?.record({ name: "session_created" });
 
   return json(
     {
@@ -267,6 +297,70 @@ async function endSession(
   return json(toPublicSession(session), { requestId });
 }
 
+async function recordAnalyticsEvent(
+  request: Request,
+  requestId: string,
+  analytics: AnalyticsSink | undefined,
+): Promise<Response> {
+  if (analytics === undefined || !analytics.isEnabled()) {
+    return json({ ok: true }, { requestId, status: 202 });
+  }
+
+  const body = await readJson<AnalyticsEventBody>(request, requestId);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  if (!isAnalyticsEventName(body.eventName)) {
+    return errorResponse("bad_json", "eventName is not allowed.", 400, requestId);
+  }
+  if (!isNonEmptyString(body.anonymousId, 128)) {
+    return errorResponse("bad_json", "anonymousId is required.", 400, requestId);
+  }
+  if (body.sessionId !== undefined && !isNonEmptyString(body.sessionId, 128)) {
+    return errorResponse("bad_json", "sessionId is invalid.", 400, requestId);
+  }
+  if (body.transferId !== undefined && !isNonEmptyString(body.transferId, 128)) {
+    return errorResponse("bad_json", "transferId is invalid.", 400, requestId);
+  }
+
+  try {
+    const event: AnalyticsEventInput = normalizeAnalyticsEvent({
+      eventName: body.eventName,
+      anonymousId: body.anonymousId,
+      ...(body.sessionId === undefined ? {} : { sessionId: body.sessionId }),
+      ...(body.transferId === undefined ? {} : { transferId: body.transferId }),
+      properties: body.properties,
+    });
+    analytics.record(event);
+  } catch {
+    return json({ ok: true }, { requestId, status: 202 });
+  }
+
+  return json({ ok: true }, { requestId, status: 202 });
+}
+
+async function getAdminAnalytics(
+  request: Request,
+  requestId: string,
+  adminToken: string | undefined,
+  analyticsDashboard: AnalyticsDashboardStore | undefined,
+): Promise<Response> {
+  if (adminToken === undefined || !isAuthorizedAdmin(request, adminToken)) {
+    return errorResponse("forbidden", "Admin token is required.", 403, requestId);
+  }
+  if (analyticsDashboard === undefined) {
+    return json(emptyDashboard(), { requestId });
+  }
+
+  const range = readAnalyticsRange(new URL(request.url).searchParams.get("range"));
+  try {
+    return json(await analyticsDashboard.getDashboard(range), { requestId });
+  } catch {
+    return errorResponse("analytics_unavailable", "Analytics dashboard is unavailable.", 503, requestId);
+  }
+}
+
 function publicConfig(config: PublicConfig): PublicConfig {
   return config;
 }
@@ -285,7 +379,7 @@ function withCors(response: Response, request: Request): Response {
   headers.set("access-control-allow-origin", origin ?? "*");
   headers.set("vary", "origin");
   headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
-  headers.set("access-control-allow-headers", "content-type,x-request-id");
+  headers.set("access-control-allow-headers", "authorization,content-type,x-admin-token,x-request-id");
   headers.set("access-control-expose-headers", "x-request-id");
   return new Response(response.body, {
     status: response.status,
@@ -325,6 +419,46 @@ function getIpKey(request: Request): string {
 
 function isDeviceId(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= 128;
+}
+
+function isNonEmptyString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
+}
+
+function readAnalyticsRange(value: string | null): AnalyticsRange {
+  return value === "7d" || value === "30d" ? value : value === "24h" ? value : "24h";
+}
+
+function isAuthorizedAdmin(request: Request, token: string): boolean {
+  const authorization = request.headers.get("authorization");
+  if (authorization === `Bearer ${token}`) {
+    return true;
+  }
+  return request.headers.get("x-admin-token") === token;
+}
+
+function emptyDashboard() {
+  return {
+    summary: {
+      sessionsCreated: 0,
+      peersConnected: 0,
+      transfersStarted: 0,
+      transfersCompleted: 0,
+      transferSuccessRate: 0,
+      pairingSuccessRate: 0,
+      averageTransferSize: 0,
+      averageTransferDuration: 0,
+      averageMbps: 0,
+    },
+    funnel: [],
+    connectionTypes: [],
+    sizeBuckets: [],
+    failures: [],
+    browsers: [],
+    operatingSystems: [],
+    deviceTypes: [],
+    recentFailedTransfers: [],
+  };
 }
 
 function readOptionalLabel(value: unknown, fallback: string): string {

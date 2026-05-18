@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
   resolve: {
     alias: {
+      "@handitoff/analytics": resolve(__dirname, "../../packages/analytics/src/index.ts"),
       "@handitoff/config": resolve(__dirname, "../../packages/config/src/index.ts"),
       "@handitoff/crypto": resolve(__dirname, "../../packages/crypto/src/index.ts"),
       "@handitoff/protocol": resolve(__dirname, "../../packages/protocol/src/index.ts"),

@@ -8,7 +8,12 @@ export type WebRtcPeerEvent =
   | { type: "data-channel-close" }
   | { type: "data-channel-error"; message: string }
   | { type: "data-channel-message"; data: unknown }
-  | { type: "network-type"; networkType: "local" | "relay" | "unknown" }
+  | {
+      type: "network-type";
+      networkType: "local" | "relay" | "unknown";
+      localCandidateType?: string;
+      remoteCandidateType?: string;
+    }
   | { type: "failed"; message: string };
 
 export type WebRtcPeerOptions = {
@@ -164,12 +169,23 @@ export class WebRtcPeer {
     try {
       const stats = await this.peerConnection.getStats();
       for (const [, stat] of stats) {
-        const s = stat as { type: string; nominated?: boolean; localCandidateId?: string };
+        const s = stat as {
+          type: string;
+          nominated?: boolean;
+          localCandidateId?: string;
+          remoteCandidateId?: string;
+        };
         if (s.type === "candidate-pair" && s.nominated === true && s.localCandidateId !== undefined) {
           const local = stats.get(s.localCandidateId) as { candidateType?: string } | undefined;
+          const remote =
+            s.remoteCandidateId === undefined
+              ? undefined
+              : (stats.get(s.remoteCandidateId) as { candidateType?: string } | undefined);
           this.options.onEvent({
             type: "network-type",
             networkType: local?.candidateType === "relay" ? "relay" : "local",
+            localCandidateType: local?.candidateType,
+            remoteCandidateType: remote?.candidateType,
           });
           return;
         }
