@@ -20,6 +20,7 @@ const config: ServerConfig = {
       maxFilesPerTransfer: 100,
       maxFileSizeBytes: 1024,
       maxRecommendedFileSizeBytes: 1024,
+      maxTotalTransferSizeBytes: 2048,
     },
     features: {
       turnEnabled: false,

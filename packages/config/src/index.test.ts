@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, DEFAULT_MAX_FILE_SIZE_BYTES, loadPublicConfig, loadServerConfig } from "./index.js";
+import {
+  ConfigError,
+  DEFAULT_MAX_FILE_SIZE_BYTES,
+  DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES,
+  loadPublicConfig,
+  loadServerConfig,
+} from "./index.js";
 
 describe("loadPublicConfig", () => {
   it("uses safe self-host defaults", () => {
@@ -13,8 +19,10 @@ describe("loadPublicConfig", () => {
     expect(config.features.accounts).toBe(false);
     expect(config.limits.unpairedSessionTtlSeconds).toBe(600);
     expect(config.limits.pairedSessionTtlSeconds).toBe(1800);
+    expect(config.limits.maxFilesPerTransfer).toBe(25);
     expect(config.limits.maxFileSizeBytes).toBe(DEFAULT_MAX_FILE_SIZE_BYTES);
     expect(config.limits.maxRecommendedFileSizeBytes).toBe(DEFAULT_MAX_FILE_SIZE_BYTES);
+    expect(config.limits.maxTotalTransferSizeBytes).toBe(DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES);
   });
 
   it("uses one shared file-size limit value with backwards-compatible env names", () => {

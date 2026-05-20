@@ -82,6 +82,7 @@ export default function Session({ params }: Route.ComponentProps) {
   const pairedAtRef = useRef<number | undefined>(undefined);
   const speedSamplesRef = useRef<Map<string, SpeedSample[]>>(new Map());
   const pendingOfferResolveRef = useRef<((accepted: boolean) => void) | undefined>(undefined);
+  const reservedSessionTransferBytesRef = useRef(0);
 
   const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
   const [dragActive, setDragActive] = useState(false);
@@ -309,6 +310,9 @@ export default function Session({ params }: Route.ComponentProps) {
     transferRef.current = new BrowserTransferController({
       channel,
       key: aesKeyRef.current,
+      maxFileSizeBytes: configRef.current.limits.maxFileSizeBytes,
+      maxFilesPerTransfer: configRef.current.limits.maxFilesPerTransfer,
+      maxTotalTransferSizeBytes: configRef.current.limits.maxTotalTransferSizeBytes,
       createObjectUrl: (blob) => {
         const url = URL.createObjectURL(blob);
         objectUrlsRef.current.push(url);
@@ -316,6 +320,25 @@ export default function Session({ params }: Route.ComponentProps) {
       },
       events: {
         onOffer: (offer: FileOfferMessage) => {
+          const maxSessionBytes = configRef.current.limits.maxTotalTransferSizeBytes;
+          if (reservedSessionTransferBytesRef.current + offer.totalSize > maxSessionBytes) {
+            dispatch({
+              type: "transfer:upsert",
+              item: {
+                id: `invalid:${offer.transferId}:${Date.now()}`,
+                name: "Incoming transfer",
+                size: offer.totalSize,
+                progress: 0,
+                direction: "incoming",
+                status: "failed",
+                issue: "transfer_too_large",
+                retryable: false,
+                error: `Exceeds the ${formatBytes(maxSessionBytes)} session limit.`,
+                bytesTransferred: 0,
+              },
+            });
+            return false;
+          }
           transferAnalyticsRef.current.set(offer.transferId, {
             fileCount: offer.files.length,
             totalBytes: offer.totalSize,
@@ -336,11 +359,17 @@ export default function Session({ params }: Route.ComponentProps) {
           );
           // Show incoming approval dialog
           return new Promise<boolean>((resolve) => {
-            pendingOfferResolveRef.current = resolve;
+            const resolveOffer = (accepted: boolean) => {
+              if (accepted) {
+                reservedSessionTransferBytesRef.current += offer.totalSize;
+              }
+              resolve(accepted);
+            };
+            pendingOfferResolveRef.current = resolveOffer;
             setPendingOffer({
               fileCount: offer.files.length,
               totalSize: offer.totalSize,
-              resolve,
+              resolve: resolveOffer,
             });
           });
         },
@@ -770,6 +799,29 @@ export default function Session({ params }: Route.ComponentProps) {
     if (selected.length === 0) return;
 
     const maxFileSizeBytes = configRef.current.limits.maxFileSizeBytes;
+    const maxFilesPerTransfer = configRef.current.limits.maxFilesPerTransfer;
+    const maxSessionBytes = configRef.current.limits.maxTotalTransferSizeBytes;
+    const totalSelectedBytes = selected.reduce((total, file) => total + file.size, 0);
+
+    if (selected.length > maxFilesPerTransfer) {
+      dispatch({
+        type: "transfer:upsert",
+        item: {
+          id: `invalid:too-many-files:${Date.now()}`,
+          name: "Selected files",
+          size: totalSelectedBytes,
+          progress: 0,
+          direction: "outgoing",
+          status: "failed",
+          issue: "too_many_files",
+          retryable: false,
+          error: `Choose ${maxFilesPerTransfer} files or fewer per transfer.`,
+          bytesTransferred: 0,
+        },
+      });
+      return;
+    }
+
     const validFiles: File[] = [];
 
     for (const file of selected) {
@@ -797,6 +849,26 @@ export default function Session({ params }: Route.ComponentProps) {
 
     if (validFiles.length === 0) return;
 
+    const validTotalBytes = validFiles.reduce((total, file) => total + file.size, 0);
+    if (reservedSessionTransferBytesRef.current + validTotalBytes > maxSessionBytes) {
+      dispatch({
+        type: "transfer:upsert",
+        item: {
+          id: `invalid:transfer-too-large:${Date.now()}`,
+          name: "Selected files",
+          size: validTotalBytes,
+          progress: 0,
+          direction: "outgoing",
+          status: "failed",
+          issue: "transfer_too_large",
+          retryable: false,
+          error: `Exceeds the ${formatBytes(maxSessionBytes)} session limit.`,
+          bytesTransferred: 0,
+        },
+      });
+      return;
+    }
+
     // Generate previews for valid image files
     const newPreviews: Record<string, string> = {};
     for (const file of validFiles) {
@@ -819,8 +891,13 @@ export default function Session({ params }: Route.ComponentProps) {
       return;
     }
     try {
-      const transferId = controller.sendFiles(validFiles);
+      const transferId = controller.sendFiles(validFiles, {
+        maxHashableFileBytes: maxFileSizeBytes,
+        maxFilesPerTransfer,
+        maxTotalTransferSizeBytes: maxSessionBytes,
+      });
       const totalBytes = validFiles.reduce((total, file) => total + file.size, 0);
+      reservedSessionTransferBytesRef.current += totalBytes;
       transferAnalyticsRef.current.set(transferId, {
         fileCount: validFiles.length,
         totalBytes,
@@ -1230,6 +1307,10 @@ function getIssueMessage(issue: FileIssue | undefined, fallback: string): string
   switch (issue) {
     case "file_too_large":
       return "This file is too large for the current limit. Remove it or choose a smaller file.";
+    case "too_many_files":
+      return "This transfer has too many files. Choose fewer files and try again.";
+    case "transfer_too_large":
+      return "This session has reached the current transfer size limit. Start a new session or choose fewer files.";
     case "unsupported_file":
     case "browser_limit":
       return "This file type or size isn't supported in this browser. Try a different browser or a smaller file.";
@@ -1406,7 +1487,12 @@ function FileRow({
   const ext = item.name.split(".").pop()?.toUpperCase() ?? "";
   const canSave = done && isIncoming && item.downloadUrl !== undefined;
 
-  const isLocalValidationError = item.issue === "file_too_large" || item.issue === "unsupported_file" || item.issue === "browser_limit";
+  const isLocalValidationError =
+    item.issue === "file_too_large" ||
+    item.issue === "too_many_files" ||
+    item.issue === "transfer_too_large" ||
+    item.issue === "unsupported_file" ||
+    item.issue === "browser_limit";
   const isRetryable = !isLocalValidationError && (item.retryable ?? false);
 
   const errorMessage =

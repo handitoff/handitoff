@@ -6,7 +6,10 @@ import {
   generateAesGcmIv,
   sha256,
 } from "@handitoff/crypto";
-import { DEFAULT_MAX_FILE_SIZE_BYTES } from "@handitoff/config";
+import {
+  DEFAULT_MAX_FILE_SIZE_BYTES,
+  DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES as CONFIG_DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES,
+} from "@handitoff/config";
 import {
   validateTransferMessage,
   type FileCancelMessage,
@@ -21,9 +24,13 @@ export const DEFAULT_CHUNK_SIZE_BYTES = 128 * 1024;
 export const DEFAULT_BUFFERED_AMOUNT_LOW_THRESHOLD_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_BUFFERED_AMOUNT_PAUSE_THRESHOLD_BYTES = 16 * 1024 * 1024;
 export const DEFAULT_MAX_HASHABLE_FILE_BYTES = DEFAULT_MAX_FILE_SIZE_BYTES;
+export const DEFAULT_MAX_FILES_PER_TRANSFER = 25;
+export const DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES = CONFIG_DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES;
 
 export type FileIssue =
   | "file_too_large"
+  | "too_many_files"
+  | "transfer_too_large"
   | "unsupported_file"
   | "browser_limit"
   | "connection_lost"
@@ -113,6 +120,8 @@ export type SendFilesOptions = {
   transferId?: string;
   chunkSizeBytes?: number;
   maxHashableFileBytes?: number;
+  maxFilesPerTransfer?: number;
+  maxTotalTransferSizeBytes?: number;
   signal?: AbortSignal;
 };
 
@@ -122,6 +131,9 @@ export type TransferControllerOptions = {
   events?: TransferEvents;
   backpressure?: BackpressureOptions;
   createObjectUrl?: (blob: Blob) => string;
+  maxFilesPerTransfer?: number;
+  maxFileSizeBytes?: number;
+  maxTotalTransferSizeBytes?: number;
 };
 
 type OutgoingTransfer = {
@@ -185,9 +197,36 @@ export function createFileOffer(files: File[], transferId = createTransferId()):
 
 export function validateFilesForTransfer(
   files: File[],
-  options: { maxFileSizeBytes?: number } = {},
+  options: {
+    maxFileSizeBytes?: number;
+    maxFilesPerTransfer?: number;
+    maxTotalTransferSizeBytes?: number;
+  } = {},
 ): void {
   const maxFileSizeBytes = options.maxFileSizeBytes ?? DEFAULT_MAX_HASHABLE_FILE_BYTES;
+  const maxFilesPerTransfer = options.maxFilesPerTransfer ?? DEFAULT_MAX_FILES_PER_TRANSFER;
+  const maxTotalTransferSizeBytes =
+    options.maxTotalTransferSizeBytes ?? DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES;
+
+  if (files.length > maxFilesPerTransfer) {
+    throw new FileTransferError(
+      "too_many_files",
+      `This transfer has too many files. Choose ${maxFilesPerTransfer} files or fewer.`,
+      { retryable: false },
+    );
+  }
+
+  const totalSize = files.reduce((total, file) => total + file.size, 0);
+  if (totalSize > maxTotalTransferSizeBytes) {
+    throw new FileTransferError(
+      "transfer_too_large",
+      `This transfer is too large for the current limit. Choose files totaling less than ${formatFileSize(
+        maxTotalTransferSizeBytes,
+      )}.`,
+      { retryable: false },
+    );
+  }
+
   for (const file of files) {
     if (file.size > maxFileSizeBytes) {
       throw new FileTransferError(
@@ -196,6 +235,50 @@ export function validateFilesForTransfer(
           maxFileSizeBytes,
         )}.`,
         { retryable: false, file },
+      );
+    }
+  }
+}
+
+function validateFileOfferForTransfer(
+  offer: FileOfferMessage,
+  options: {
+    maxFileSizeBytes?: number;
+    maxFilesPerTransfer?: number;
+    maxTotalTransferSizeBytes?: number;
+  } = {},
+): void {
+  const maxFileSizeBytes = options.maxFileSizeBytes ?? DEFAULT_MAX_HASHABLE_FILE_BYTES;
+  const maxFilesPerTransfer = options.maxFilesPerTransfer ?? DEFAULT_MAX_FILES_PER_TRANSFER;
+  const maxTotalTransferSizeBytes =
+    options.maxTotalTransferSizeBytes ?? DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES;
+
+  if (offer.files.length > maxFilesPerTransfer) {
+    throw new FileTransferError(
+      "too_many_files",
+      `This transfer has too many files. Ask the sender to choose ${maxFilesPerTransfer} files or fewer.`,
+      { retryable: false },
+    );
+  }
+
+  if (offer.totalSize > maxTotalTransferSizeBytes) {
+    throw new FileTransferError(
+      "transfer_too_large",
+      `This transfer is too large for the current limit. Ask the sender to choose files totaling less than ${formatFileSize(
+        maxTotalTransferSizeBytes,
+      )}.`,
+      { retryable: false },
+    );
+  }
+
+  for (const file of offer.files) {
+    if (file.size > maxFileSizeBytes) {
+      throw new FileTransferError(
+        "file_too_large",
+        `This file is too large for the current limit. Ask the sender to choose a file smaller than ${formatFileSize(
+          maxFileSizeBytes,
+        )}.`,
+        { retryable: false },
       );
     }
   }
@@ -291,7 +374,14 @@ export class BrowserTransferController {
       throw new Error("At least one file is required.");
     }
     const maxHashableFileBytes = options.maxHashableFileBytes ?? DEFAULT_MAX_HASHABLE_FILE_BYTES;
-    validateFilesForTransfer(files, { maxFileSizeBytes: maxHashableFileBytes });
+    const maxFilesPerTransfer = options.maxFilesPerTransfer ?? this.options.maxFilesPerTransfer;
+    const maxTotalTransferSizeBytes =
+      options.maxTotalTransferSizeBytes ?? this.options.maxTotalTransferSizeBytes;
+    validateFilesForTransfer(files, {
+      maxFileSizeBytes: maxHashableFileBytes,
+      ...(maxFilesPerTransfer === undefined ? {} : { maxFilesPerTransfer }),
+      ...(maxTotalTransferSizeBytes === undefined ? {} : { maxTotalTransferSizeBytes }),
+    });
     const transferId = options.transferId ?? createTransferId();
     const metadata = files.map((file) => normalizeFileMetadata(file));
     const totalSize = metadata.reduce((total, file) => total + file.size, 0);
@@ -415,6 +505,40 @@ export class BrowserTransferController {
   }
 
   private async handleOffer(message: FileOfferMessage): Promise<void> {
+    try {
+      validateFileOfferForTransfer(message, {
+        ...(this.options.maxFileSizeBytes === undefined
+          ? {}
+          : { maxFileSizeBytes: this.options.maxFileSizeBytes }),
+        ...(this.options.maxFilesPerTransfer === undefined
+          ? {}
+          : { maxFilesPerTransfer: this.options.maxFilesPerTransfer }),
+        ...(this.options.maxTotalTransferSizeBytes === undefined
+          ? {}
+          : { maxTotalTransferSizeBytes: this.options.maxTotalTransferSizeBytes }),
+      });
+    } catch (error) {
+      const normalized = toFileTransferError(error);
+      this.sendJson({
+        type: "file:reject",
+        transferId: message.transferId,
+        reason: normalized.message,
+      });
+      this.options.events?.onError?.({
+        transferId: message.transferId,
+        direction: "incoming",
+        status: "failed",
+        bytesTransferred: 0,
+        totalBytes: message.totalSize,
+        progress: 0,
+        name: "Incoming transfer",
+        error: normalized.message,
+        issue: normalized.issue,
+        retryable: normalized.retryable,
+      });
+      return;
+    }
+
     const accepted = (await this.options.events?.onOffer?.(message)) ?? true;
     if (!accepted) {
       this.sendJson({ type: "file:reject", transferId: message.transferId, reason: "Rejected." });

@@ -33,6 +33,8 @@ export type ClientSessionState = {
 
 export type FileIssueCode =
   | "file_too_large"
+  | "too_many_files"
+  | "transfer_too_large"
   | "unsupported_file"
   | "browser_limit"
   | "connection_lost"

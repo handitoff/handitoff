@@ -1,4 +1,5 @@
-export const DEFAULT_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+export const DEFAULT_MAX_FILE_SIZE_BYTES = 1 * 1024 * 1024 * 1024;
+export const DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
 
 export type PublicConfig = {
   appUrl: string;
@@ -17,6 +18,7 @@ export type PublicConfig = {
     maxFilesPerTransfer: number;
     maxFileSizeBytes: number;
     maxRecommendedFileSizeBytes: number;
+    maxTotalTransferSizeBytes: number;
   };
   features: {
     turnEnabled: boolean;
@@ -74,9 +76,10 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
   limits: {
     unpairedSessionTtlSeconds: 10 * 60,
     pairedSessionTtlSeconds: 30 * 60,
-    maxFilesPerTransfer: 100,
+    maxFilesPerTransfer: 25,
     maxFileSizeBytes: DEFAULT_MAX_FILE_SIZE_BYTES,
     maxRecommendedFileSizeBytes: DEFAULT_MAX_FILE_SIZE_BYTES,
+    maxTotalTransferSizeBytes: DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES,
   },
   features: {
     turnEnabled: false,
@@ -146,6 +149,11 @@ export function loadPublicConfig(env: ConfigEnv = process.env): PublicConfig {
           "HANDITOFF_MAX_FILE_SIZE_BYTES",
           DEFAULT_PUBLIC_CONFIG.limits.maxRecommendedFileSizeBytes,
         ),
+      ),
+      maxTotalTransferSizeBytes: readPositiveInteger(
+        env,
+        "HANDITOFF_MAX_TOTAL_TRANSFER_SIZE_BYTES",
+        DEFAULT_PUBLIC_CONFIG.limits.maxTotalTransferSizeBytes,
       ),
     },
     features: {
@@ -233,6 +241,11 @@ export function assertValidPublicConfig(config: PublicConfig): void {
   requirePositiveInteger(
     config.limits.maxRecommendedFileSizeBytes,
     "limits.maxRecommendedFileSizeBytes",
+    issues,
+  );
+  requirePositiveInteger(
+    config.limits.maxTotalTransferSizeBytes,
+    "limits.maxTotalTransferSizeBytes",
     issues,
   );
 

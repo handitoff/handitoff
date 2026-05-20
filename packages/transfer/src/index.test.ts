@@ -76,7 +76,7 @@ describe("@handitoff/transfer", () => {
 
   it("calculates chunk ranges and progress", () => {
     expect(DEFAULT_CHUNK_SIZE_BYTES).toBe(128 * 1024);
-    expect(DEFAULT_MAX_HASHABLE_FILE_BYTES).toBe(2 * 1024 * 1024 * 1024);
+    expect(DEFAULT_MAX_HASHABLE_FILE_BYTES).toBe(1 * 1024 * 1024 * 1024);
     expect(calculateChunkCount(0)).toBe(1);
     expect(calculateChunkCount(DEFAULT_CHUNK_SIZE_BYTES + 1)).toBe(2);
     expect(getChunkRange(10, 1, 6)).toEqual({ offset: 6, end: 10, size: 4 });
@@ -110,8 +110,30 @@ describe("@handitoff/transfer", () => {
     );
   });
 
+  it("validates guest file count and total transfer size", () => {
+    const files = Array.from(
+      { length: 26 },
+      (_, index) => ({ name: `${index}.txt`, size: 1, type: "text/plain" }) as File,
+    );
+
+    expect(() => validateFilesForTransfer(files, { maxFilesPerTransfer: 25 })).toThrow(
+      FileTransferError,
+    );
+    expect(() =>
+      validateFilesForTransfer(
+        [
+          { name: "a.bin", size: 6, type: "application/octet-stream" } as File,
+          { name: "b.bin", size: 5, type: "application/octet-stream" } as File,
+        ],
+        { maxTotalTransferSizeBytes: 10 },
+      ),
+    ).toThrow(FileTransferError);
+  });
+
   it("separates retryable transfer issues from local validation issues", () => {
     expect(isRetryableFileIssue("file_too_large")).toBe(false);
+    expect(isRetryableFileIssue("too_many_files")).toBe(false);
+    expect(isRetryableFileIssue("transfer_too_large")).toBe(false);
     expect(isRetryableFileIssue("unsupported_file")).toBe(false);
     expect(isRetryableFileIssue("browser_limit")).toBe(false);
     expect(isRetryableFileIssue("connection_lost")).toBe(true);

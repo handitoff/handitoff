@@ -41,6 +41,7 @@ export type PublicConfig = {
     maxFilesPerTransfer?: number;
     maxFileSizeBytes?: number;
     maxRecommendedFileSizeBytes?: number;
+    maxTotalTransferSizeBytes?: number;
   };
   features: {
     turnEnabled: boolean;

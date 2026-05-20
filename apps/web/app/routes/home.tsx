@@ -741,7 +741,7 @@ function LFaq() {
     },
     {
       q: "Can I send a folder?",
-      a: "Yes — drop the folder and handitoff.io will preserve its structure on the other side. Up to 2 GB per file inside it.",
+      a: "Yes — drop the folder and handitoff.io will preserve its structure on the other side. Up to 1 GB per file, 25 files per transfer, and 2 GB total per session.",
     },
     {
       q: "Why is there no app?",
