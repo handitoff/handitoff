@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, loadPublicConfig, loadServerConfig } from "./index.js";
+import { ConfigError, DEFAULT_MAX_FILE_SIZE_BYTES, loadPublicConfig, loadServerConfig } from "./index.js";
 
 describe("loadPublicConfig", () => {
   it("uses safe self-host defaults", () => {
@@ -13,6 +13,23 @@ describe("loadPublicConfig", () => {
     expect(config.features.accounts).toBe(false);
     expect(config.limits.unpairedSessionTtlSeconds).toBe(600);
     expect(config.limits.pairedSessionTtlSeconds).toBe(1800);
+    expect(config.limits.maxFileSizeBytes).toBe(DEFAULT_MAX_FILE_SIZE_BYTES);
+    expect(config.limits.maxRecommendedFileSizeBytes).toBe(DEFAULT_MAX_FILE_SIZE_BYTES);
+  });
+
+  it("uses one shared file-size limit value with backwards-compatible env names", () => {
+    expect(
+      loadPublicConfig({ HANDITOFF_MAX_FILE_SIZE_BYTES: "1234" }).limits,
+    ).toMatchObject({
+      maxFileSizeBytes: 1234,
+      maxRecommendedFileSizeBytes: 1234,
+    });
+    expect(
+      loadPublicConfig({ HANDITOFF_MAX_RECOMMENDED_FILE_SIZE_BYTES: "5678" }).limits,
+    ).toMatchObject({
+      maxFileSizeBytes: 5678,
+      maxRecommendedFileSizeBytes: 5678,
+    });
   });
 
   it("loads hosted-style overrides", () => {

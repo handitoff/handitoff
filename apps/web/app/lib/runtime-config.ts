@@ -1,4 +1,5 @@
 import { loadPublicConfig, type PublicConfig } from "@handitoff/config";
+import { DEFAULT_MAX_FILE_SIZE_BYTES } from "@handitoff/config";
 
 function defaultPublicConfig(): PublicConfig {
   const browserOrigin = typeof window === "undefined" ? undefined : window.location.origin;
@@ -29,7 +30,8 @@ function defaultPublicConfig(): PublicConfig {
       unpairedSessionTtlSeconds: 600,
       pairedSessionTtlSeconds: 1800,
       maxFilesPerTransfer: 100,
-      maxRecommendedFileSizeBytes: 2 * 1024 * 1024 * 1024,
+      maxFileSizeBytes: DEFAULT_MAX_FILE_SIZE_BYTES,
+      maxRecommendedFileSizeBytes: DEFAULT_MAX_FILE_SIZE_BYTES,
     },
     features: {
       turnEnabled: false,

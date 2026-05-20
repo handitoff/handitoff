@@ -2,11 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BrowserTransferController,
   DEFAULT_CHUNK_SIZE_BYTES,
+  DEFAULT_MAX_HASHABLE_FILE_BYTES,
+  FileTransferError,
   calculateChunkCount,
   calculateOverallProgress,
   calculateProgress,
   getChunkRange,
+  isRetryableFileIssue,
   normalizeFileMetadata,
+  validateFilesForTransfer,
   waitForBackpressure,
   type TransferDataChannel,
   type TransferProgressSnapshot,
@@ -72,6 +76,7 @@ describe("@handitoff/transfer", () => {
 
   it("calculates chunk ranges and progress", () => {
     expect(DEFAULT_CHUNK_SIZE_BYTES).toBe(128 * 1024);
+    expect(DEFAULT_MAX_HASHABLE_FILE_BYTES).toBe(2 * 1024 * 1024 * 1024);
     expect(calculateChunkCount(0)).toBe(1);
     expect(calculateChunkCount(DEFAULT_CHUNK_SIZE_BYTES + 1)).toBe(2);
     expect(getChunkRange(10, 1, 6)).toEqual({ offset: 6, end: 10, size: 4 });
@@ -82,6 +87,36 @@ describe("@handitoff/transfer", () => {
         { bytesTransferred: 10, totalBytes: 10 },
       ]),
     ).toBe(0.75);
+  });
+
+  it("validates file size before transfer state or offers are created", async () => {
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const channel = new FakeChannel();
+    const sender = new BrowserTransferController({ channel, key });
+    const file = new File(["too-large"], "video.mp4");
+
+    expect(() => validateFilesForTransfer([file], { maxFileSizeBytes: 1 })).toThrow(
+      FileTransferError,
+    );
+    expect(() => sender.sendFiles([file], { maxHashableFileBytes: 1 })).toThrow(
+      FileTransferError,
+    );
+    expect(channel.sent).toHaveLength(0);
+    await expect(sender.retryTransfer("transfer-missing")).rejects.toThrow(
+      "Only failed outgoing transfers can be retried.",
+    );
+  });
+
+  it("separates retryable transfer issues from local validation issues", () => {
+    expect(isRetryableFileIssue("file_too_large")).toBe(false);
+    expect(isRetryableFileIssue("unsupported_file")).toBe(false);
+    expect(isRetryableFileIssue("browser_limit")).toBe(false);
+    expect(isRetryableFileIssue("connection_lost")).toBe(true);
+    expect(isRetryableFileIssue("peer_disconnected")).toBe(true);
+    expect(isRetryableFileIssue("transfer_failed")).toBe(true);
   });
 
   it("waits for DataChannel backpressure to drain", async () => {
@@ -315,7 +350,7 @@ describe("@handitoff/transfer", () => {
     });
   });
 
-  it("reports oversized outgoing files on the original file row", async () => {
+  it("does not send oversized outgoing files to the peer", async () => {
     const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
       "encrypt",
       "decrypt",
@@ -324,30 +359,18 @@ describe("@handitoff/transfer", () => {
     const receiverChannel = new FakeChannel();
     senderChannel.connect(receiverChannel);
     receiverChannel.connect(senderChannel);
-    const errors: TransferProgressSnapshot[] = [];
     const sender = new BrowserTransferController({
       channel: senderChannel,
       key,
-      events: { onError: (snapshot) => errors.push(snapshot) },
     });
     const receiver = new BrowserTransferController({ channel: receiverChannel, key });
     receiverChannel.onData = (data) => void receiver.handleData(data);
     senderChannel.onData = (data) => void sender.handleData(data);
 
-    sender.sendFiles([new File(["too-large"], "video.mp4")], { maxHashableFileBytes: 1 });
-
-    await vi.waitFor(() => {
-      expect(errors.some((snapshot) => snapshot.status === "failed")).toBe(true);
-    });
-    const failed = errors.find((snapshot) => snapshot.status === "failed");
-    expect(failed).toMatchObject({
-      direction: "outgoing",
-      status: "failed",
-      name: "video.mp4",
-      totalBytes: 9,
-    });
-    expect(failed?.fileId).toBeDefined();
-    expect(failed?.error).toContain("too large");
+    expect(() =>
+      sender.sendFiles([new File(["too-large"], "video.mp4")], { maxHashableFileBytes: 1 }),
+    ).toThrow(FileTransferError);
+    expect(senderChannel.sent).toHaveLength(0);
   });
 
   it("cancels before encrypted sending continues", async () => {

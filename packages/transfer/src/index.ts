@@ -6,6 +6,7 @@ import {
   generateAesGcmIv,
   sha256,
 } from "@handitoff/crypto";
+import { DEFAULT_MAX_FILE_SIZE_BYTES } from "@handitoff/config";
 import {
   validateTransferMessage,
   type FileCancelMessage,
@@ -19,7 +20,48 @@ import {
 export const DEFAULT_CHUNK_SIZE_BYTES = 128 * 1024;
 export const DEFAULT_BUFFERED_AMOUNT_LOW_THRESHOLD_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_BUFFERED_AMOUNT_PAUSE_THRESHOLD_BYTES = 16 * 1024 * 1024;
-export const DEFAULT_MAX_HASHABLE_FILE_BYTES = 512 * 1024 * 1024;
+export const DEFAULT_MAX_HASHABLE_FILE_BYTES = DEFAULT_MAX_FILE_SIZE_BYTES;
+
+export type FileIssue =
+  | "file_too_large"
+  | "unsupported_file"
+  | "browser_limit"
+  | "connection_lost"
+  | "peer_disconnected"
+  | "transfer_failed"
+  | "cancelled"
+  | "unknown";
+
+export const RETRYABLE_FILE_ISSUES = [
+  "connection_lost",
+  "peer_disconnected",
+  "transfer_failed",
+  "unknown",
+] as const satisfies readonly FileIssue[];
+
+export function isRetryableFileIssue(issue: FileIssue): boolean {
+  return RETRYABLE_FILE_ISSUES.includes(issue as (typeof RETRYABLE_FILE_ISSUES)[number]);
+}
+
+export class FileTransferError extends Error {
+  public readonly issue: FileIssue;
+  public readonly retryable: boolean;
+  public readonly file?: Pick<File, "name" | "size" | "type">;
+
+  public constructor(
+    issue: FileIssue,
+    message: string,
+    options: { retryable?: boolean; file?: Pick<File, "name" | "size" | "type"> } = {},
+  ) {
+    super(message);
+    this.name = "FileTransferError";
+    this.issue = issue;
+    this.retryable = options.retryable ?? isRetryableFileIssue(issue);
+    if (options.file !== undefined) {
+      this.file = options.file;
+    }
+  }
+}
 
 export type TransferDataChannel = {
   readonly bufferedAmount: number;
@@ -54,6 +96,8 @@ export type TransferProgressSnapshot = {
   progress: number;
   name?: string;
   error?: string;
+  issue?: FileIssue;
+  retryable?: boolean;
   blob?: Blob;
   downloadUrl?: string;
 };
@@ -137,6 +181,24 @@ export function createFileOffer(files: File[], transferId = createTransferId()):
     files: items,
     totalSize: items.reduce((total, file) => total + file.size, 0),
   };
+}
+
+export function validateFilesForTransfer(
+  files: File[],
+  options: { maxFileSizeBytes?: number } = {},
+): void {
+  const maxFileSizeBytes = options.maxFileSizeBytes ?? DEFAULT_MAX_HASHABLE_FILE_BYTES;
+  for (const file of files) {
+    if (file.size > maxFileSizeBytes) {
+      throw new FileTransferError(
+        "file_too_large",
+        `This file is too large for the current limit. Remove it or choose a file smaller than ${formatFileSize(
+          maxFileSizeBytes,
+        )}.`,
+        { retryable: false, file },
+      );
+    }
+  }
 }
 
 export function calculateChunkCount(
@@ -228,6 +290,8 @@ export class BrowserTransferController {
     if (files.length === 0) {
       throw new Error("At least one file is required.");
     }
+    const maxHashableFileBytes = options.maxHashableFileBytes ?? DEFAULT_MAX_HASHABLE_FILE_BYTES;
+    validateFilesForTransfer(files, { maxFileSizeBytes: maxHashableFileBytes });
     const transferId = options.transferId ?? createTransferId();
     const metadata = files.map((file) => normalizeFileMetadata(file));
     const totalSize = metadata.reduce((total, file) => total + file.size, 0);
@@ -239,7 +303,7 @@ export class BrowserTransferController {
       started: false,
       canceled: false,
       chunkSizeBytes: options.chunkSizeBytes ?? DEFAULT_CHUNK_SIZE_BYTES,
-      maxHashableFileBytes: options.maxHashableFileBytes ?? DEFAULT_MAX_HASHABLE_FILE_BYTES,
+      maxHashableFileBytes,
     };
     if (options.signal !== undefined) {
       outgoing.signal = options.signal;
@@ -345,7 +409,7 @@ export class BrowserTransferController {
         this.handleCancel(message);
         break;
       case "transfer:error":
-        this.emitPeerTransferError(message.transferId, message.message, message.fileId);
+        this.emitPeerTransferError(message.transferId, message.code, message.message, message.fileId);
         break;
     }
   }
@@ -396,25 +460,29 @@ export class BrowserTransferController {
     for (const [index, file] of transfer.files.entries()) {
       const metadata = transfer.metadata[index];
       if (metadata === undefined) {
-        this.emitOutgoingFileError(transfer, undefined, "File metadata is missing.");
+        this.emitOutgoingFileError(
+          transfer,
+          undefined,
+          new FileTransferError("transfer_failed", "File metadata is missing."),
+        );
         continue;
       }
       try {
         await this.sendOneFile(transfer, file, metadata);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Transfer failed.";
+        const normalized = toFileTransferError(error);
         try {
           this.sendJson({
             type: "transfer:error",
             transferId,
             fileId: metadata.fileId,
-            code: "transfer_failed",
-            message,
+            code: normalized.issue,
+            message: normalized.message,
           });
         } catch {
           // The local UI still needs the original transfer failure even if the peer channel is gone.
         }
-        this.emitOutgoingFileError(transfer, metadata, message);
+        this.emitOutgoingFileError(transfer, metadata, normalized);
       }
     }
   }
@@ -425,10 +493,12 @@ export class BrowserTransferController {
     metadata: FileOfferItem,
   ): Promise<void> {
     if (file.size > transfer.maxHashableFileBytes) {
-      throw new Error(
-        `This file is too large for the current browser transfer limit (${formatFileSize(
-          file.size,
-        )} selected, ${formatFileSize(transfer.maxHashableFileBytes)} supported).`,
+      throw new FileTransferError(
+        "file_too_large",
+        `This file is too large for the current limit. Remove it or choose a file smaller than ${formatFileSize(
+          transfer.maxHashableFileBytes,
+        )}.`,
+        { retryable: false, file },
       );
     }
     const chunkCount = calculateChunkCount(file.size, transfer.chunkSizeBytes);
@@ -436,7 +506,7 @@ export class BrowserTransferController {
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
       throwIfAborted(transfer.signal);
       if (transfer.canceled) {
-        throw new DOMException("Transfer canceled.", "AbortError");
+        throw new FileTransferError("cancelled", "Transfer cancelled.", { retryable: false, file });
       }
       const range = getChunkRange(file.size, chunkIndex, transfer.chunkSizeBytes);
       const plaintext = await file.slice(range.offset, range.end).arrayBuffer();
@@ -578,6 +648,33 @@ export class BrowserTransferController {
     if (incoming !== undefined) {
       incoming.canceled = true;
     }
+    const targetFiles =
+      message.fileId === undefined
+        ? [
+            ...(outgoing?.metadata ?? []),
+            ...(incoming === undefined ? [] : Array.from(incoming.files.values()).map((file) => file.metadata)),
+          ]
+        : [
+            outgoing?.metadata.find((file) => file.fileId === message.fileId),
+            incoming?.files.get(message.fileId)?.metadata,
+          ].filter((file): file is FileOfferItem => file !== undefined);
+    for (const file of targetFiles) {
+      this.emitProgress({
+        transferId: message.transferId,
+        fileId: file.fileId,
+        direction: incoming === undefined ? "outgoing" : "incoming",
+        status: "canceled",
+        bytesTransferred: 0,
+        totalBytes: file.size,
+        progress: 0,
+        name: file.name,
+        issue: "cancelled",
+        retryable: false,
+      });
+    }
+    if (targetFiles.length > 0) {
+      return;
+    }
     this.emitProgress({
       transferId: message.transferId,
       direction: "incoming",
@@ -585,6 +682,8 @@ export class BrowserTransferController {
       bytesTransferred: 0,
       totalBytes: 0,
       progress: 0,
+      issue: "cancelled",
+      retryable: false,
       ...(message.fileId === undefined ? {} : { fileId: message.fileId }),
     });
   }
@@ -602,6 +701,8 @@ export class BrowserTransferController {
         progress: 0,
         name: file.name,
         error: reason,
+        issue: "cancelled",
+        retryable: false,
       });
     }
   }
@@ -653,7 +754,7 @@ export class BrowserTransferController {
   private emitOutgoingFileError(
     transfer: OutgoingTransfer,
     metadata: FileOfferItem | undefined,
-    message: string,
+    error: FileTransferError,
   ): void {
     this.emitError({
       transferId: transfer.transferId,
@@ -662,7 +763,9 @@ export class BrowserTransferController {
       bytesTransferred: 0,
       totalBytes: metadata?.size ?? 0,
       progress: 0,
-      error: message,
+      error: error.message,
+      issue: error.issue,
+      retryable: error.retryable,
       ...(metadata === undefined
         ? {}
         : {
@@ -673,7 +776,7 @@ export class BrowserTransferController {
   }
 
   private emitIncomingFailure(error: unknown): void {
-    const message = normalizeTransferError(error);
+    const normalized = toFileTransferError(error);
     const pending = findActiveIncomingFile(this.incoming);
     if (pending === undefined) {
       return;
@@ -689,11 +792,18 @@ export class BrowserTransferController {
       totalBytes: file.metadata.size,
       progress: calculateProgress(file.receivedBytes, file.metadata.size),
       name: file.metadata.name,
-      error: message,
+      error: normalized.message,
+      issue: normalized.issue,
+      retryable: normalized.retryable,
     });
   }
 
-  private emitPeerTransferError(transferId: string, message: string, fileId?: string): void {
+  private emitPeerTransferError(
+    transferId: string,
+    code: string,
+    message: string,
+    fileId?: string,
+  ): void {
     const transfer = this.incoming.get(transferId);
     if (transfer === undefined) {
       return;
@@ -714,6 +824,8 @@ export class BrowserTransferController {
         progress: calculateProgress(file.receivedBytes, file.metadata.size),
         name: file.metadata.name,
         error: message,
+        issue: normalizeFileIssueCode(code),
+        retryable: isRetryableFileIssue(normalizeFileIssueCode(code)),
       });
     }
   }
@@ -773,6 +885,62 @@ function normalizeTransferError(error: unknown): string {
     return error.message;
   }
   return "Transfer failed while reading data from the paired browser.";
+}
+
+function toFileTransferError(error: unknown): FileTransferError {
+  if (error instanceof FileTransferError) {
+    return error;
+  }
+  const message = normalizeTransferError(error);
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  ) {
+    return new FileTransferError("cancelled", "Transfer cancelled.", { retryable: false });
+  }
+  if (/closed|offline|locked|changed networks|connection|data channel/i.test(message)) {
+    return new FileTransferError("connection_lost", message);
+  }
+  if (/peer|paired device/i.test(message)) {
+    return new FileTransferError("peer_disconnected", message);
+  }
+  if (/too large|limit/i.test(message)) {
+    return new FileTransferError("file_too_large", message, { retryable: false });
+  }
+  return new FileTransferError("transfer_failed", message);
+}
+
+function normalizeFileIssueCode(codeOrMessage: string): FileIssue {
+  if (isFileIssue(codeOrMessage)) {
+    return codeOrMessage;
+  }
+  if (/too large|limit/i.test(codeOrMessage)) {
+    return "file_too_large";
+  }
+  if (/peer|other device|paired device/i.test(codeOrMessage)) {
+    return "peer_disconnected";
+  }
+  if (/closed|offline|locked|network|connection/i.test(codeOrMessage)) {
+    return "connection_lost";
+  }
+  if (/cancel/i.test(codeOrMessage)) {
+    return "cancelled";
+  }
+  return "transfer_failed";
+}
+
+function isFileIssue(value: string): value is FileIssue {
+  return (
+    value === "file_too_large" ||
+    value === "unsupported_file" ||
+    value === "browser_limit" ||
+    value === "connection_lost" ||
+    value === "peer_disconnected" ||
+    value === "transfer_failed" ||
+    value === "cancelled" ||
+    value === "unknown"
+  );
 }
 
 function formatFileSize(bytes: number): string {

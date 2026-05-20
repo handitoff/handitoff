@@ -73,6 +73,39 @@ describe("InMemorySessionStore", () => {
     await expect(store.countActiveByIp("203.0.113.10")).resolves.toBe(0);
   });
 
+  it("does not extend an active session when heartbeat omits a TTL", async () => {
+    let now = 1_000;
+    const store = new InMemorySessionStore({
+      codeGenerator: () => "ABC234",
+      idGenerator: () => "session-1",
+      now: () => now,
+    });
+
+    await store.create({
+      hostDeviceId: "host-1",
+      hostLabel: "MacBook",
+      hostIpKey: "203.0.113.10",
+      ttlSeconds: 60,
+    });
+    await store.attachGuest({
+      sessionId: "session-1",
+      guestDeviceId: "guest-1",
+      guestLabel: "iPhone",
+      ttlSeconds: 120,
+    });
+
+    now = 30_000;
+    await expect(store.heartbeat("session-1", "host-1")).resolves.toMatchObject({
+      expiresAt: 121_000,
+    });
+
+    now = 121_000;
+    await expect(store.heartbeat("session-1", "host-1")).resolves.toBeUndefined();
+    await expect(store.getById("session-1", { includeExpired: true })).resolves.toMatchObject({
+      status: "expired",
+    });
+  });
+
   it("returns only join-safe public session fields", async () => {
     const store = new InMemorySessionStore({
       codeGenerator: () => "ABC234",
@@ -142,6 +175,35 @@ describe("RedisSessionStore", () => {
 
     expect(redis.ttls.get("handitoff:session:session-1")).toBe(120);
     expect(redis.ttls.get("handitoff:session-code:ABC234")).toBe(120);
+  });
+
+  it("keeps the active session expiry fixed when heartbeat omits a TTL", async () => {
+    let now = 1_000;
+    const redis = new FakeRedis();
+    const store = new RedisSessionStore(redis, {
+      codeGenerator: () => "ABC234",
+      idGenerator: () => "session-1",
+      now: () => now,
+    });
+
+    await store.create({
+      hostDeviceId: "host-1",
+      hostLabel: "MacBook",
+      hostIpKey: "203.0.113.10",
+      ttlSeconds: 60,
+    });
+    await store.attachGuest({
+      sessionId: "session-1",
+      guestDeviceId: "guest-1",
+      guestLabel: "iPhone",
+      ttlSeconds: 120,
+    });
+
+    now = 30_000;
+    await expect(store.heartbeat("session-1", "host-1")).resolves.toMatchObject({
+      expiresAt: 121_000,
+    });
+    expect(redis.ttls.get("handitoff:session:session-1")).toBe(91);
   });
 });
 

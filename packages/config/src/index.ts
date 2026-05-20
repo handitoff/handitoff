@@ -1,3 +1,5 @@
+export const DEFAULT_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+
 export type PublicConfig = {
   appUrl: string;
   apiUrl: string;
@@ -13,6 +15,7 @@ export type PublicConfig = {
     unpairedSessionTtlSeconds: number;
     pairedSessionTtlSeconds: number;
     maxFilesPerTransfer: number;
+    maxFileSizeBytes: number;
     maxRecommendedFileSizeBytes: number;
   };
   features: {
@@ -72,7 +75,8 @@ const DEFAULT_PUBLIC_CONFIG: PublicConfig = {
     unpairedSessionTtlSeconds: 10 * 60,
     pairedSessionTtlSeconds: 30 * 60,
     maxFilesPerTransfer: 100,
-    maxRecommendedFileSizeBytes: 2 * 1024 * 1024 * 1024,
+    maxFileSizeBytes: DEFAULT_MAX_FILE_SIZE_BYTES,
+    maxRecommendedFileSizeBytes: DEFAULT_MAX_FILE_SIZE_BYTES,
   },
   features: {
     turnEnabled: false,
@@ -125,10 +129,23 @@ export function loadPublicConfig(env: ConfigEnv = process.env): PublicConfig {
         "HANDITOFF_MAX_FILES_PER_TRANSFER",
         DEFAULT_PUBLIC_CONFIG.limits.maxFilesPerTransfer,
       ),
+      maxFileSizeBytes: readPositiveInteger(
+        env,
+        "HANDITOFF_MAX_FILE_SIZE_BYTES",
+        readPositiveInteger(
+          env,
+          "HANDITOFF_MAX_RECOMMENDED_FILE_SIZE_BYTES",
+          DEFAULT_PUBLIC_CONFIG.limits.maxFileSizeBytes,
+        ),
+      ),
       maxRecommendedFileSizeBytes: readPositiveInteger(
         env,
         "HANDITOFF_MAX_RECOMMENDED_FILE_SIZE_BYTES",
-        DEFAULT_PUBLIC_CONFIG.limits.maxRecommendedFileSizeBytes,
+        readPositiveInteger(
+          env,
+          "HANDITOFF_MAX_FILE_SIZE_BYTES",
+          DEFAULT_PUBLIC_CONFIG.limits.maxRecommendedFileSizeBytes,
+        ),
       ),
     },
     features: {
@@ -212,6 +229,7 @@ export function assertValidPublicConfig(config: PublicConfig): void {
     issues,
   );
   requirePositiveInteger(config.limits.maxFilesPerTransfer, "limits.maxFilesPerTransfer", issues);
+  requirePositiveInteger(config.limits.maxFileSizeBytes, "limits.maxFileSizeBytes", issues);
   requirePositiveInteger(
     config.limits.maxRecommendedFileSizeBytes,
     "limits.maxRecommendedFileSizeBytes",

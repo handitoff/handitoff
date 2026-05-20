@@ -289,11 +289,7 @@ export class SignalingHub {
     connection.sessionId = session.id;
     connection.approved = true;
     connection.lastSeenAt = this.now();
-    await this.store.heartbeat(
-      session.id,
-      message.deviceId,
-      this.config.publicConfig.limits.pairedSessionTtlSeconds,
-    );
+    await this.store.heartbeat(session.id, message.deviceId);
 
     const peerDevice = role === "host" ? session.guestDevice : session.hostDevice;
     connection.socket.send({
@@ -393,11 +389,7 @@ export class SignalingHub {
       return;
     }
     connection.lastSeenAt = this.now();
-    await this.store.heartbeat(
-      message.sessionId,
-      message.deviceId,
-      this.config.publicConfig.limits.pairedSessionTtlSeconds,
-    );
+    await this.store.heartbeat(message.sessionId, message.deviceId);
   }
 
   private async relay(

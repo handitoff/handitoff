@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useReducer, useRef, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router";
 import { SiteFooter } from "../components/site-footer";
 import { VisualQr } from "../components/visual-qr";
@@ -213,8 +213,10 @@ function LHero() {
   const [restartKey] = useState(0);
   const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
   const [joinUrl, setJoinUrl] = useState("");
+  const [publicCode, setPublicCode] = useState("");
   const [expiresAt, setExpiresAt] = useState<number | undefined>();
   const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const socketRef = useRef<HanditoffWebSocketClient | undefined>(undefined);
   const stateRef = useRef<ClientSessionState>(state);
@@ -243,8 +245,10 @@ function LHero() {
     dispatch({ type: "session:create-start", deviceId: identity.id, deviceLabel: identity.label });
     dispatch({ type: "socket:connecting" });
     setJoinUrl("");
+    setPublicCode("");
     setExpiresAt(undefined);
     setCopied(false);
+    setCodeCopied(false);
 
     void api
       .getConfig({ signal: controller.signal })
@@ -280,6 +284,7 @@ function LHero() {
               publicCode: message.publicCode,
             });
             setJoinUrl(message.joinUrl);
+            setPublicCode(message.publicCode);
             setExpiresAt(message.expiresAt);
             trackEvent("session_created", undefined, { sessionId: message.sessionId });
             trackEvent("qr_visible", undefined, { sessionId: message.sessionId });
@@ -399,7 +404,7 @@ function LHero() {
     }
     const minutes = Math.floor(remainingSeconds / 60);
     const seconds = remainingSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+    return `Expires in ${minutes}:${seconds.toString().padStart(2, "0")}`;
   }, [remainingSeconds]);
 
   const approvePeer = () => {
@@ -436,7 +441,7 @@ function LHero() {
     trackEvent("peer_rejected", undefined, { sessionId: state.sessionId });
   };
 
-  const copyLink = () => {
+  const copyLink = useCallback(() => {
     if (joinUrl === "") {
       return;
     }
@@ -444,7 +449,15 @@ function LHero() {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     });
-  };
+  }, [joinUrl]);
+
+  const copyCode = useCallback(() => {
+    if (publicCode === "") return;
+    void navigator.clipboard.writeText(publicCode).then(() => {
+      setCodeCopied(true);
+      window.setTimeout(() => setCodeCopied(false), 1600);
+    });
+  }, [publicCode]);
 
   const isPending = state.pendingPeerDeviceLabel !== undefined;
 
@@ -515,14 +528,24 @@ function LHero() {
                       </button>
                     </>
                   ) : (
-                    <button
-                      className="l-ticket-btn"
-                      type="button"
-                      onClick={copyLink}
-                      disabled={joinUrl === ""}
-                    >
-                      {copied ? "Copied ✓" : "Copy link"}
-                    </button>
+                    <>
+                      <button
+                        className="l-ticket-btn"
+                        type="button"
+                        onClick={copyLink}
+                        disabled={joinUrl === ""}
+                      >
+                        {copied ? "Copied ✓" : "Copy link"}
+                      </button>
+                      <button
+                        className="l-ticket-btn l-ticket-btn--secondary"
+                        type="button"
+                        onClick={copyCode}
+                        disabled={publicCode === ""}
+                      >
+                        {codeCopied ? "Copied ✓" : "Copy code"}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -549,9 +572,7 @@ function LHero() {
                   )}
                 </div>
                 <div className="l-ticket-stub-foot">
-                  {joinUrl === ""
-                    ? "creating session…"
-                    : "↑ point your other device"}
+                  <StubJoinInput />
                 </div>
               </div>
             </div>
@@ -559,6 +580,45 @@ function LHero() {
         </div>
       </main>
     </section>
+  );
+}
+
+function StubJoinInput() {
+  const navigate = useNavigate();
+  const [code, setCode] = useState("");
+
+  const handleJoin = () => {
+    const normalized = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (normalized.length >= 4) {
+      navigate(`/join/${normalized}`);
+    }
+  };
+
+  return (
+    <div className="l-stub-join">
+      <input
+        className="l-stub-join-input"
+        type="text"
+        placeholder="Have a code? Enter it"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleJoin(); }}
+        aria-label="Session code"
+        maxLength={12}
+        autoCapitalize="characters"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <button
+        className="l-stub-join-btn"
+        type="button"
+        onClick={handleJoin}
+        disabled={code.trim().replace(/[^A-Z0-9]/gi, "").length < 4}
+        aria-label="Join session"
+      >
+        Join
+      </button>
+    </div>
   );
 }
 
@@ -589,10 +649,6 @@ function LHowItWorks() {
   return (
     <section className="el-section" id="how-it-works">
       <div className="el-container">
-        <div className="ht-kicker">
-          <span className="ht-kicker-num">§ 01</span>
-          <span>How it works</span>
-        </div>
         <h2 className="el-section-title">The whole thing, end to end.</h2>
         <div className="el-steps">
           {steps.map((s) => (
@@ -630,10 +686,6 @@ function LWhy() {
   return (
     <section className="el-section el-section--dark">
       <div className="el-container">
-        <div className="ht-kicker ht-kicker--light">
-          <span className="ht-kicker-num">§ 02</span>
-          <span>Why it&apos;s different</span>
-        </div>
         <h2 className="el-why-headline">
           Moving a file shouldn&apos;t <em>require</em> a service that knows your name.
         </h2>
@@ -693,10 +745,6 @@ function LPromises() {
   return (
     <section className="el-section">
       <div className="el-container">
-        <div className="ht-kicker">
-          <span className="ht-kicker-num">§ 03</span>
-          <span>The short version</span>
-        </div>
         <h2 className="el-section-title">
           The <em>short</em> version.
         </h2>
@@ -728,10 +776,6 @@ function LPopularUses() {
   return (
     <section className="el-section">
       <div className="el-container">
-        <div className="ht-kicker">
-          <span className="ht-kicker-num">§ 05</span>
-          <span>Popular uses</span>
-        </div>
         <h2 className="el-section-title">Popular ways to use handitoff.</h2>
         <div className="el-link-grid">
           {links.map((page) => (
@@ -773,10 +817,6 @@ function LFaq() {
   return (
     <section className="el-section el-section--dark">
       <div className="el-container">
-        <div className="ht-kicker ht-kicker--light">
-          <span className="ht-kicker-num">§ 04</span>
-          <span>Things people ask</span>
-        </div>
         <h2 className="el-section-title" style={{ color: "#fafafa" }}>Things people ask.</h2>
         <div className="el-faq-list">
           {items.map((it, i) => (

@@ -200,6 +200,10 @@ export class InMemorySessionStore implements SessionStore {
     }
 
     const now = this.now();
+    if (session.expiresAt <= now) {
+      session.status = "expired";
+      return undefined;
+    }
     if (session.hostDevice.id === deviceId) {
       session.hostDevice.lastSeenAt = now;
     } else if (session.guestDevice?.id === deviceId) {
@@ -430,6 +434,11 @@ export class RedisSessionStore implements SessionStore {
       return undefined;
     }
     const now = this.now();
+    if (session.expiresAt <= now) {
+      session.status = "expired";
+      await this.persist(session, 60);
+      return undefined;
+    }
     if (session.hostDevice.id === deviceId) {
       session.hostDevice.lastSeenAt = now;
     } else if (session.guestDevice?.id === deviceId) {

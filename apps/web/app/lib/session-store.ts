@@ -31,6 +31,16 @@ export type ClientSessionState = {
   error?: string;
 };
 
+export type FileIssueCode =
+  | "file_too_large"
+  | "unsupported_file"
+  | "browser_limit"
+  | "connection_lost"
+  | "peer_disconnected"
+  | "transfer_failed"
+  | "cancelled"
+  | "unknown";
+
 export type TransferItem = {
   id: string;
   fileId?: string;
@@ -41,6 +51,9 @@ export type TransferItem = {
   status?: string;
   error?: string;
   downloadUrl?: string;
+  issue?: FileIssueCode;
+  retryable?: boolean;
+  bytesTransferred?: number;
 };
 
 export type ClientSessionAction =
@@ -90,7 +103,9 @@ export type ClientSessionAction =
   | { type: "crypto:ready" }
   | { type: "crypto:failed"; message: string }
   | { type: "transfer:upsert"; item: TransferItem }
-  | { type: "transfer:clear" };
+  | { type: "transfer:clear" }
+  | { type: "transfer:remove"; id: string }
+  | { type: "transfer:remove-failed" };
 
 export const initialClientSessionState: ClientSessionState = {
   connection: "idle",
@@ -253,6 +268,16 @@ export function reduceClientSessionState(
       };
     case "transfer:clear":
       return { ...state, transfer: { outgoing: [], incoming: [] } };
+    case "transfer:remove":
+      return {
+        ...state,
+        transfer: removeTransferItem(state.transfer, action.id),
+      };
+    case "transfer:remove-failed":
+      return {
+        ...state,
+        transfer: removeFailedItems(state.transfer),
+      };
   }
 }
 
@@ -268,4 +293,25 @@ function upsertTransfer(
       ? [...list, item]
       : list.map((existing) => (existing.id === item.id ? item : existing));
   return { ...transfer, [key]: next };
+}
+
+function removeTransferItem(
+  transfer: ClientSessionState["transfer"],
+  id: string,
+): ClientSessionState["transfer"] {
+  return {
+    outgoing: transfer.outgoing.filter((item) => item.id !== id),
+    incoming: transfer.incoming.filter((item) => item.id !== id),
+  };
+}
+
+function removeFailedItems(
+  transfer: ClientSessionState["transfer"],
+): ClientSessionState["transfer"] {
+  const isNonFailed = (item: TransferItem) =>
+    item.status !== "failed" && item.status !== "canceled" && item.status !== "rejected";
+  return {
+    outgoing: transfer.outgoing.filter(isNonFailed),
+    incoming: transfer.incoming.filter(isNonFailed),
+  };
 }

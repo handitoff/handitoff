@@ -39,6 +39,7 @@ export type PublicConfig = {
     unpairedSessionTtlSeconds: number;
     pairedSessionTtlSeconds: number;
     maxFilesPerTransfer?: number;
+    maxFileSizeBytes?: number;
     maxRecommendedFileSizeBytes?: number;
   };
   features: {

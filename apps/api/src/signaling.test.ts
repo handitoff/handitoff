@@ -18,6 +18,7 @@ const config: ServerConfig = {
       unpairedSessionTtlSeconds: 60,
       pairedSessionTtlSeconds: 120,
       maxFilesPerTransfer: 100,
+      maxFileSizeBytes: 1024,
       maxRecommendedFileSizeBytes: 1024,
     },
     features: {

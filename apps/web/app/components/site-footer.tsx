@@ -38,8 +38,7 @@ export function SiteFooter() {
 
       <div className="el-footer-bar">
         <span>© {new Date().getFullYear()} handitoff</span>
-        <span>Browser-only · peer-to-peer · no servers in between</span>
-        <span>Made for a single moment</span>
+        <span>Made with ❤️ by <a href="https://github.com/OMouta" target="_blank" rel="noopener noreferrer" className="el-footer-madeby-link">OMouta</a></span>
       </div>
     </footer>
   );

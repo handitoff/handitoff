@@ -78,7 +78,8 @@ The Compose file uses local development defaults only. It does not contain produ
 | `HANDITOFF_UNPAIRED_SESSION_TTL_SECONDS`                  | No               | Waiting-room session lifetime. Defaults to `600`.                                                             |
 | `HANDITOFF_PAIRED_SESSION_TTL_SECONDS`                    | No               | Connected session lifetime. Defaults to `1800`.                                                               |
 | `HANDITOFF_MAX_FILES_PER_TRANSFER`                        | No               | Client-facing transfer guidance. Defaults to `100`.                                                           |
-| `HANDITOFF_MAX_RECOMMENDED_FILE_SIZE_BYTES`               | No               | Client-facing file size guidance. Defaults to `2147483648`.                                                   |
+| `HANDITOFF_MAX_FILE_SIZE_BYTES`                           | No               | Shared file size limit for validation and transfer offers. Defaults to `2147483648`.                          |
+| `HANDITOFF_MAX_RECOMMENDED_FILE_SIZE_BYTES`               | No               | Backwards-compatible alias for the shared file size limit. Defaults to `2147483648`.                          |
 | `HANDITOFF_MAX_ACTIVE_SESSIONS_PER_IP`                    | No               | API rate limit. Defaults to `5`.                                                                              |
 | `HANDITOFF_MAX_JOIN_ATTEMPTS_PER_PUBLIC_CODE`             | No               | Join attempt rate limit. Defaults to `10`.                                                                    |
 | `HANDITOFF_MAX_SIGNALING_MESSAGES_PER_MINUTE_PER_SESSION` | No               | Signaling rate limit. Defaults to `300`.                                                                      |
