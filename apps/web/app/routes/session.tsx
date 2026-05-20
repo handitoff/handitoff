@@ -1199,6 +1199,16 @@ export default function Session({ params }: Route.ComponentProps) {
                   ? "Securing…"
                   : "Connecting…"}
           </button>
+          {hasAnyFailed ? (
+            <button className="button secondary xfer-sendbar-clear" type="button" onClick={removeFailedItems}>
+              Clear failed
+            </button>
+          ) : null}
+          {hasAnyCompleted ? (
+            <button className="button secondary xfer-sendbar-clear" type="button" onClick={clearAllItems}>
+              Clear completed
+            </button>
+          ) : null}
         </footer>
       </main>
     </AppShell>

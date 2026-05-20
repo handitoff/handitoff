@@ -434,6 +434,13 @@ a {
   white-space: nowrap;
 }
 
+.xfer-sendbar-clear {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 0 10px;
+  height: 32px;
+}
+
 .xfer-sendbar-code {
   font-size: 10px;
   letter-spacing: 0.1em;
@@ -1701,6 +1708,20 @@ a {
   color: #fafafa;
   white-space: nowrap;
   font-weight: 400;
+}
+
+.l-ticket-title--code {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.l-ticket-title-loading {
+  display: inline-block;
+  width: 5ch;
+  background: rgba(250,250,250,0.12);
+  border-radius: 4px;
+  animation: ht-pulse-dot 1.6s ease-out infinite;
 }
 
 .l-ticket-from-to {

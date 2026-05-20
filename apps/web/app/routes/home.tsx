@@ -74,78 +74,15 @@ function HeroGlobe() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !canvas.transferControlToOffscreen) return;
 
-    const SIZE = canvas.width;
-    const R = SIZE / 2;
-    const TEX_W = 1024;
-    const TEX_H = 512;
-    let rafId = 0;
+    const offscreen = canvas.transferControlToOffscreen();
+    const worker = new Worker(new URL("../lib/globe-worker.ts", import.meta.url), {
+      type: "module",
+    });
+    worker.postMessage({ canvas: offscreen }, [offscreen]);
 
-    const img = new Image();
-    img.src = "/large-satellite-world-topo-map.jpg";
-    img.onload = () => {
-      const tmp = document.createElement("canvas");
-      tmp.width = TEX_W;
-      tmp.height = TEX_H;
-      const tctx = tmp.getContext("2d")!;
-      tctx.drawImage(img, 0, 0, TEX_W, TEX_H);
-      const texPx = tctx.getImageData(0, 0, TEX_W, TEX_H).data;
-
-      // Precompute spherical UV + shading for every pixel once
-      const uBase = new Float32Array(SIZE * SIZE);
-      const vRow = new Int32Array(SIZE * SIZE); // row offset pre-multiplied by TEX_W
-      const sphereMask = new Uint8Array(SIZE * SIZE);
-      const shadeDim = new Uint8Array(SIZE * SIZE);
-
-      for (let y = 0; y < SIZE; y++) {
-        for (let x = 0; x < SIZE; x++) {
-          const nx = (x - R) / R;
-          const ny = (y - R) / R;
-          if (nx * nx + ny * ny >= 1) continue;
-          const nz = Math.sqrt(1 - nx * nx - ny * ny);
-          const lat = Math.asin(-ny);
-          const lon = Math.atan2(nx, nz);
-          const idx = y * SIZE + x;
-          uBase[idx] = (lon / (2 * Math.PI) + 0.5) * TEX_W;
-          vRow[idx] = Math.min(Math.floor((0.5 - lat / Math.PI) * TEX_H), TEX_H - 1) * TEX_W;
-          sphereMask[idx] = 1;
-          // Limb darkening + directional light from upper-left
-          const limbDark = Math.pow(nz, 0.6);
-          const dirLight = Math.max(0, nx * -0.35 + ny * -0.45 + nz * 0.7);
-          const brightness = limbDark * 0.55 + dirLight * 0.45;
-          shadeDim[idx] = Math.round((1 - brightness) * 185);
-        }
-      }
-
-      const ctx = canvas.getContext("2d")!;
-      const frameData = ctx.createImageData(SIZE, SIZE);
-      const out = frameData.data;
-      let angle = 0;
-
-      function render() {
-        const uShift = (angle / (2 * Math.PI)) * TEX_W;
-        for (let i = 0; i < SIZE * SIZE; i++) {
-          if (!sphereMask[i]) continue;
-          let u = uBase[i] - uShift;
-          u = ((u % TEX_W) + TEX_W) % TEX_W;
-          const pi = (vRow[i] + Math.floor(u)) * 4;
-          const po = i * 4;
-          const dim = shadeDim[i];
-          out[po]     = texPx[pi]     - dim;
-          out[po + 1] = texPx[pi + 1] - dim;
-          out[po + 2] = texPx[pi + 2] - dim + 12; // subtle blue cast in shadows
-          out[po + 3] = 255;
-        }
-        ctx.putImageData(frameData, 0, 0);
-        angle = (angle + 0.003) % (2 * Math.PI);
-        rafId = requestAnimationFrame(render);
-      }
-
-      rafId = requestAnimationFrame(render);
-    };
-
-    return () => cancelAnimationFrame(rafId);
+    return () => worker.terminate();
   }, []);
 
   return (
@@ -493,7 +430,9 @@ function LHero() {
                   </span>
                 </div>
 
-                <h2 className="l-ticket-title">this device &rarr;</h2>
+                <h2 className="l-ticket-title l-ticket-title--code">
+                  {publicCode !== "" ? publicCode : <span className="l-ticket-title-loading" aria-hidden="true">&nbsp;</span>}
+                </h2>
 
                 <div className="l-ticket-from-to">
                   <div className="l-ticket-from">
