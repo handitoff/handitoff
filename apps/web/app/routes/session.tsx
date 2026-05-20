@@ -79,7 +79,6 @@ export default function Session({ params }: Route.ComponentProps) {
   const stateRef = useRef<ClientSessionState>(initialClientSessionState);
   const networkTypeRef = useRef<"local" | "relay" | "unknown">("unknown");
   const configRef = useRef(loadPublicRuntimeConfig());
-  const pairedAtRef = useRef<number | undefined>(undefined);
   const speedSamplesRef = useRef<Map<string, SpeedSample[]>>(new Map());
   const pendingOfferResolveRef = useRef<((accepted: boolean) => void) | undefined>(undefined);
   const reservedSessionTransferBytesRef = useRef(0);
@@ -102,13 +101,13 @@ export default function Session({ params }: Route.ComponentProps) {
   const [linkCopied, setLinkCopied] = useState(false);
   const [speedMap, setSpeedMap] = useState<Record<string, number>>({});
   const [etaMap, setEtaMap] = useState<Record<string, number>>({});
+  const [pairedAt, setPairedAt] = useState<number | undefined>(undefined);
 
   stateRef.current = state;
 
   // Session countdown timer — starts when pairedAt is recorded
   useEffect(() => {
-    if (pairedAtRef.current === undefined) return;
-    const pairedAt = pairedAtRef.current;
+    if (pairedAt === undefined) return;
     const ttl = configRef.current.limits.pairedSessionTtlSeconds;
     const expiresAt = pairedAt + ttl * 1000;
 
@@ -119,7 +118,7 @@ export default function Session({ params }: Route.ComponentProps) {
     update();
     const interval = window.setInterval(update, 1000);
     return () => window.clearInterval(interval);
-  }, [retryKey]);
+  }, [pairedAt, retryKey]);
 
   // Speed/ETA update interval — every 1.5 seconds
   useEffect(() => {
@@ -607,7 +606,8 @@ export default function Session({ params }: Route.ComponentProps) {
     const controller = new AbortController();
     dispatch({ type: "session:resume-start", ...stored });
     dispatch({ type: "socket:connecting" });
-    pairedAtRef.current = Date.now();
+    setSessionSecondsLeft(configRef.current.limits.pairedSessionTtlSeconds);
+    setPairedAt(Date.now());
 
     void fetchConfig(controller.signal)
       .then((config) => {
@@ -761,8 +761,12 @@ export default function Session({ params }: Route.ComponentProps) {
   }, [createPeer, navigate, params.code, retryKey, sendPeerControl, teardownPeer]);
 
   // Local session expiry: client-side timer reached zero
+  const sessionExpiresAt =
+    pairedAt === undefined
+      ? undefined
+      : pairedAt + configRef.current.limits.pairedSessionTtlSeconds * 1000;
   const isSessionTimerExpired =
-    pairedAtRef.current !== undefined && sessionSecondsLeft === 0;
+    sessionExpiresAt !== undefined && sessionSecondsLeft === 0 && Date.now() >= sessionExpiresAt;
   const isSessionExpired = state.connection === "expired" || isSessionTimerExpired;
   const isSessionEnded = state.connection === "ended";
 
@@ -1099,7 +1103,7 @@ export default function Session({ params }: Route.ComponentProps) {
             </div>
           </div>
           <div className="xfer-topbar-right">
-            {pairedAtRef.current !== undefined && !isSessionExpired ? (
+            {pairedAt !== undefined && !isSessionExpired ? (
               <span className="xfer-session-timer" title="Paired session time remaining">
                 {sessionTimerLabel}
               </span>
