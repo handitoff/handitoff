@@ -58,6 +58,16 @@ a {
   flex-direction: column;
 }
 
+body.session-active {
+  overflow: hidden;
+  height: 100svh;
+}
+
+body.session-active .app-shell {
+  height: 100svh;
+  min-height: unset;
+}
+
 .chrome {
   height: 64px;
   flex-shrink: 0;
@@ -115,9 +125,9 @@ a {
 
 .xfer-stage {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  height: calc(100svh - 64px);
   overflow: hidden;
 }
 
@@ -441,6 +451,37 @@ a {
   height: 32px;
 }
 
+.xfer-file-counter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.xfer-file-counter-track {
+  width: 48px;
+  height: 3px;
+  background: #e5e5e2;
+  overflow: hidden;
+}
+
+.xfer-file-counter-fill {
+  height: 100%;
+  background: #0a0a0a;
+  transition: width 0.25s linear;
+}
+
+.xfer-file-counter-fill--full {
+  background: #16a34a;
+}
+
+.xfer-file-counter-label {
+  font-size: 11px;
+  color: #b0b0ac;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .xfer-sendbar-code {
   font-size: 10px;
   letter-spacing: 0.1em;
@@ -502,7 +543,6 @@ a {
   gap: 0;
   max-width: min(90vw, 900px);
   width: 100%;
-  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -522,7 +562,6 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px 8px 0 0;
 }
 
 /* Bottom bar: filename + download */
@@ -556,7 +595,6 @@ a {
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
-  border-radius: 4px;
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
@@ -1317,7 +1355,7 @@ a {
 
   /* Transfer stage on mobile */
   .xfer-stage {
-    height: calc(100svh - 64px);
+    min-height: 0;
   }
 
   .xfer-topbar {
@@ -2767,14 +2805,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: 0;
-}
-
-.xfer-pool-list--card {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 280px));
-  gap: 1px;
-  justify-content: start;
-  padding: 16px;
+  margin: 12px;
+  overflow: hidden;
 }
 
 .xfer-row {
@@ -2787,6 +2819,8 @@ a {
   min-height: 52px;
 }
 
+.xfer-row:last-child { border-bottom: none; }
+
 .xfer-row--done { background: #f9fafb; }
 .xfer-row--failed { background: #fff5f5; }
 
@@ -2794,7 +2828,6 @@ a {
   flex-shrink: 0;
   width: 36px;
   height: 36px;
-  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2884,7 +2917,6 @@ a {
 .xfer-row-bar {
   height: 2px;
   background: rgba(0,0,0,0.08);
-  border-radius: 1px;
   margin-top: 2px;
   overflow: hidden;
 }
@@ -2893,7 +2925,6 @@ a {
   height: 100%;
   background: #0a0a0a;
   transition: width 0.25s linear;
-  border-radius: 1px;
 }
 
 .xfer-row-error {
@@ -2922,7 +2953,6 @@ a {
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
-  border-radius: 3px;
   white-space: nowrap;
 }
 
@@ -2937,7 +2967,6 @@ a {
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-  border-radius: 3px;
   white-space: nowrap;
   line-height: 1;
   display: inline-flex;
@@ -3006,7 +3035,6 @@ a {
   padding: 4px 10px;
   cursor: pointer;
   flex-shrink: 0;
-  border-radius: 2px;
 }
 
 .xfer-bulk-bar {
@@ -3041,7 +3069,6 @@ a {
   font-size: 11px;
   padding: 4px 10px;
   cursor: pointer;
-  border-radius: 2px;
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
@@ -3200,11 +3227,7 @@ a {
 .l-ticket-code-copy:hover { background: rgba(255,255,255,0.2); color: #fff; }
 
 @media (max-width: 640px) {
-  .xfer-pool-list--card {
-    display: flex;
-    flex-direction: column;
-    padding: 0;
-  }
+  .xfer-file-counter { display: none; }
 
   .xfer-topbar {
     padding: 0 12px;

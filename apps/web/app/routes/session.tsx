@@ -102,6 +102,14 @@ export default function Session({ params }: Route.ComponentProps) {
   const [speedMap, setSpeedMap] = useState<Record<string, number>>({});
   const [etaMap, setEtaMap] = useState<Record<string, number>>({});
   const [pairedAt, setPairedAt] = useState<number | undefined>(undefined);
+  const [peerLimitReached, setPeerLimitReached] = useState(false);
+  const limitSignalSentRef = useRef(false);
+  const sessionEndScheduledRef = useRef(false);
+
+  useEffect(() => {
+    document.body.classList.add("session-active");
+    return () => document.body.classList.remove("session-active");
+  }, []);
 
   stateRef.current = state;
 
@@ -522,6 +530,10 @@ export default function Session({ params }: Route.ComponentProps) {
             });
             return;
           }
+          if (parsed?.type === "limit:reached") {
+            setPeerLimitReached(true);
+            return;
+          }
           if (parsed?.type === "crypto:public-key" && parsed.publicKey !== undefined) {
             void completeCryptoExchange(parsed.publicKey).catch((error: unknown) => {
               const errorMessage = getCryptoErrorMessage(error);
@@ -770,16 +782,10 @@ export default function Session({ params }: Route.ComponentProps) {
   const isSessionExpired = state.connection === "expired" || isSessionTimerExpired;
   const isSessionEnded = state.connection === "ended";
 
-  const canSendFiles =
-    state.dataChannel === "open" && state.crypto === "ready" && !isSessionExpired;
-
   const hasChannelIssue =
     state.dataChannel === "failed" ||
     state.crypto === "failed" ||
     (state.webrtc === "failed" && state.dataChannel !== "open");
-
-  const connectionLabel = getConnectionLabel(state, canSendFiles, hasChannelIssue, networkType);
-  const channelFootnote = getChannelFootnote(state, canSendFiles, hasChannelIssue);
   const peerLabel = state.peerDeviceLabel ?? "Paired device";
   const localLabel = state.deviceLabel ?? "This device";
   const allTransfers = [...state.transfer.outgoing, ...state.transfer.incoming];
@@ -791,6 +797,30 @@ export default function Session({ params }: Route.ComponentProps) {
   const hasAnyCompleted = allTransfers.some((i) => i.status === "complete");
   const hasActiveTransfers = hasActiveTransfer(state.transfer);
   const allDoneOrFailed = allTransfers.length > 0 && !hasActiveTransfers;
+
+  const maxFiles = configRef.current.limits.maxFilesPerTransfer;
+  const completedCount = allTransfers.filter((i) => i.status === "complete").length;
+  const localLimitReached = maxFiles > 0 && completedCount >= maxFiles && !hasActiveTransfers;
+
+  // When both peers have completed all files, end the session
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!localLimitReached) return;
+    if (!limitSignalSentRef.current && state.dataChannel === "open") {
+      limitSignalSentRef.current = true;
+      sendPeerControl({ type: "limit:reached" });
+    }
+    if (peerLimitReached && !sessionEndScheduledRef.current) {
+      sessionEndScheduledRef.current = true;
+      const timer = window.setTimeout(endSession, 1500);
+      return () => window.clearTimeout(timer);
+    }
+  }, [localLimitReached, peerLimitReached, state.dataChannel, sendPeerControl]);
+
+  const canSendFiles =
+    state.dataChannel === "open" && state.crypto === "ready" && !isSessionExpired && !localLimitReached;
+  const connectionLabel = getConnectionLabel(state, canSendFiles, hasChannelIssue, networkType);
+  const channelFootnote = getChannelFootnote(state, canSendFiles, hasChannelIssue);
 
   const getPreviewUrl = (item: TransferItem): string | undefined => {
     if (!/\.(jpg|jpeg|png|gif|webp|bmp|avif|heic|svg)$/i.test(item.name)) return undefined;
@@ -806,8 +836,10 @@ export default function Session({ params }: Route.ComponentProps) {
     const maxFilesPerTransfer = configRef.current.limits.maxFilesPerTransfer;
     const maxSessionBytes = configRef.current.limits.maxTotalTransferSizeBytes;
     const totalSelectedBytes = selected.reduce((total, file) => total + file.size, 0);
+    const currentCompleted = allTransfers.filter((i) => i.status === "complete").length;
+    const remaining = maxFilesPerTransfer - currentCompleted;
 
-    if (selected.length > maxFilesPerTransfer) {
+    if (selected.length > remaining) {
       dispatch({
         type: "transfer:upsert",
         item: {
@@ -819,7 +851,9 @@ export default function Session({ params }: Route.ComponentProps) {
           status: "failed",
           issue: "too_many_files",
           retryable: false,
-          error: `Choose ${maxFilesPerTransfer} files or fewer per transfer.`,
+          error: remaining <= 0
+            ? `Session is full (${maxFilesPerTransfer} file limit).`
+            : `Only ${remaining} slot${remaining === 1 ? "" : "s"} left (${maxFilesPerTransfer} file limit).`,
           bytesTransferred: 0,
         },
       });
@@ -997,12 +1031,10 @@ export default function Session({ params }: Route.ComponentProps) {
         deviceId: state.deviceId,
       });
     }
-    // Cancel any active transfers before ending
-    cancelAllTransfers();
     teardownPeer();
     clearStoredSessionContext();
     trackEvent("session_ended", undefined, getAnalyticsContext());
-    navigate("/");
+    dispatch({ type: "session:ended" });
   };
 
   const copyLink = () => {
@@ -1025,9 +1057,6 @@ export default function Session({ params }: Route.ComponentProps) {
     pendingOfferResolveRef.current = undefined;
     setPendingOffer(null);
   };
-
-  // Determine layout: list for multiple files or mobile (via CSS), card for single desktop
-  const useSingleCard = allTransfers.length === 1;
 
   // Session timer display
   const sessionTimerLabel = formatSessionTimer(sessionSecondsLeft);
@@ -1137,10 +1166,13 @@ export default function Session({ params }: Route.ComponentProps) {
         ) : null}
 
         {/* Bulk action bar */}
-        {allTransfers.length > 1 ? (
-          <div className="xfer-bulk-bar">
+        <div className="xfer-bulk-bar">
             <span className="xfer-bulk-count">
-              {allTransfers.length} files
+              {allTransfers.length === 0
+                ? "No files"
+                : allTransfers.length === 1
+                  ? "1 file"
+                  : `${allTransfers.length} files`}
             </span>
             <div className="xfer-bulk-actions">
               {hasActiveTransfers ? (
@@ -1188,8 +1220,6 @@ export default function Session({ params }: Route.ComponentProps) {
               ) : null}
             </div>
           </div>
-        ) : null}
-
 
         <div className="xfer-pool">
           {allTransfers.length === 0 ? (
@@ -1219,7 +1249,7 @@ export default function Session({ params }: Route.ComponentProps) {
               ) : null}
             </div>
           ) : (
-            <div className={`xfer-pool-list${useSingleCard ? " xfer-pool-list--card" : ""}`}>
+            <div className="xfer-pool-list">
               {allTransfers.map((item) => {
                 const previewUrl = getPreviewUrl(item);
                 const speed = speedMap[item.id];
@@ -1246,7 +1276,6 @@ export default function Session({ params }: Route.ComponentProps) {
                     onRemove={removeItem}
                     speedBps={speed}
                     etaSeconds={eta}
-                    isCard={useSingleCard}
                   />
                 );
               })}
@@ -1285,10 +1314,18 @@ export default function Session({ params }: Route.ComponentProps) {
               Clear failed
             </button>
           ) : null}
-          {hasAnyCompleted ? (
-            <button className="button secondary xfer-sendbar-clear" type="button" onClick={clearAllItems}>
-              Clear completed
-            </button>
+          {state.dataChannel === "open" && state.crypto === "ready" && !isSessionExpired ? (
+            <div className="xfer-file-counter">
+              <div className="xfer-file-counter-track">
+                <div
+                  className={`xfer-file-counter-fill${localLimitReached ? " xfer-file-counter-fill--full" : ""}`}
+                  style={{ width: `${Math.min(100, (completedCount / maxFiles) * 100)}%` }}
+                />
+              </div>
+              <span className="xfer-file-counter-label">
+                {completedCount}/{maxFiles}
+              </span>
+            </div>
           ) : null}
         </footer>
       </main>
@@ -1463,7 +1500,6 @@ function FileRow({
   onRemove,
   speedBps,
   etaSeconds,
-  isCard,
 }: {
   item: TransferItem;
   localLabel: string;
@@ -1477,7 +1513,6 @@ function FileRow({
   onRemove: (id: string) => void;
   speedBps: number | undefined;
   etaSeconds: number | undefined;
-  isCard: boolean;
 }) {
   const pct = Math.round(item.progress * 100);
   const done = item.status === "complete";
@@ -1504,106 +1539,7 @@ function FileRow({
 
   const fromLabel = isIncoming ? `↓ ${peerLabel}` : `↑ ${localLabel}`;
 
-  // Card layout (single file desktop)
-  if (isCard) {
-    return (
-      <div className="xfer-card">
-        <div
-          className={`xfer-card-thumb xfer-thumb--${type} xfer-card-thumb--clickable`}
-          onClick={onOpenLightbox}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenLightbox(); } }}
-          aria-label={`Preview ${item.name}`}
-        >
-          {previewUrl !== undefined ? (
-            <img src={previewUrl} alt="" className="xfer-card-img" />
-          ) : (
-            <div className="xfer-thumb-icon">
-              <FileTypeIcon name={item.name} size={32} />
-              {ext ? <span className="xfer-thumb-ext">{ext.slice(0, 4)}</span> : null}
-            </div>
-          )}
-          {(active || offered) && !done && !failed && !canceled ? (
-            <div className="xfer-card-bar">
-              <div className="xfer-card-bar-fill" style={{ width: `${pct}%` }} />
-            </div>
-          ) : null}
-          {failed ? <div className="xfer-card-err-mark">!</div> : null}
-          {canceled ? <div className="xfer-card-canceled-mark">—</div> : null}
-        </div>
-        <div className="xfer-card-info">
-          <span className="xfer-card-name" title={item.name}>{item.name}</span>
-          <div className="xfer-card-foot">
-            <span className="xfer-card-from">{fromLabel}</span>
-            <span className="xfer-card-size-status">
-              {active && item.bytesTransferred !== undefined
-                ? `${formatBytes(item.bytesTransferred)} / ${formatBytes(item.size)}`
-                : active
-                  ? `${pct}%`
-                  : formatBytes(item.size)}
-            </span>
-            {active || offered ? (
-              <button
-                className="xfer-card-cancel"
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onCancel(item.id, item.fileId); }}
-                aria-label="Cancel"
-              >×</button>
-            ) : null}
-            {done ? (
-              <button
-                className="xfer-card-clear"
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
-              >
-                Clear
-              </button>
-            ) : null}
-            {(failed || canceled || offered) && !active ? (
-              <button
-                className="xfer-card-remove"
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
-              >
-                Remove
-              </button>
-            ) : null}
-            {failed && isRetryable ? (
-              <button
-                className="xfer-card-retry"
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onRetry(item.id); }}
-              >
-                Retry
-              </button>
-            ) : null}
-          </div>
-          {active && speedBps !== undefined ? (
-            <div className="xfer-card-speed">
-              {formatSpeed(speedBps)}
-              {etaSeconds !== undefined ? ` · ${formatEta(etaSeconds)}` : ""}
-            </div>
-          ) : null}
-          {errorMessage !== undefined ? (
-            <span className="xfer-card-error">{errorMessage}</span>
-          ) : null}
-        </div>
-        {canSave ? (
-          <a
-            className={`xfer-card-save-btn${downloaded ? " xfer-card-save-btn--saved" : ""}`}
-            href={item.downloadUrl}
-            download={item.name}
-            onClick={(e) => { e.stopPropagation(); onDownload(); }}
-          >
-            {downloaded ? "✓ Saved" : "↓ Save"}
-          </a>
-        ) : null}
-      </div>
-    );
-  }
-
-  // List row layout (default for multiple files and mobile)
+  // List row layout
   return (
     <div className={`xfer-row${done ? " xfer-row--done" : ""}${failed || canceled ? " xfer-row--failed" : ""}`}>
       <button
