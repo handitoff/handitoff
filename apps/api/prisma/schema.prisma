@@ -26,3 +26,23 @@ model AnalyticsEvent {
   @@index([transferId], map: "analytics_events_transfer_id_idx")
   @@map("analytics_events")
 }
+
+model FeedbackReport {
+  id             BigInt   @id @default(autoincrement())
+  type           String
+  rating         Int?
+  message        String?  @db.Text
+  sessionId      String?  @map("session_id")
+  errorCode      String?  @map("error_code")
+  connectionType String?  @map("connection_type")
+  browser        String?
+  os             String?
+  sessionState   String?  @map("session_state")
+  sizeBucket     String?  @map("size_bucket")
+  durationMs     Int?     @map("duration_ms")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "feedback_reports_created_at_idx")
+  @@index([type], map: "feedback_reports_type_idx")
+  @@map("feedback_reports")
+}

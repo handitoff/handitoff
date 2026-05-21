@@ -15,6 +15,7 @@ import { RedisTcpClient } from "./redis-client.js";
 import { SignalingHub } from "./signaling.js";
 import { InMemorySessionStore, RedisSessionStore } from "./session-store.js";
 import { PrismaAnalyticsStore } from "./analytics-store.js";
+import { PrismaFeedbackStore } from "./feedback-store.js";
 import { handleWebSocketUpgrade } from "./websocket.js";
 
 export function createNodeServer() {
@@ -33,6 +34,9 @@ export function createNodeServer() {
         ? new ConsoleAnalyticsSink()
         : new NoopAnalyticsSink();
 
+  const feedbackStore =
+    config.databaseUrl !== undefined ? new PrismaFeedbackStore(config.databaseUrl) : undefined;
+
   const abuseLimits =
     process.env.HANDITOFF_ABUSE_ENABLED === "true" ? DEFAULT_HOSTED_ABUSE_LIMITS : undefined;
 
@@ -48,6 +52,9 @@ export function createNodeServer() {
   };
   if (analytics instanceof PrismaAnalyticsStore && config.adminToken !== undefined) {
     appOptions.analyticsDashboard = analytics;
+  }
+  if (feedbackStore !== undefined) {
+    appOptions.feedbackStore = feedbackStore;
   }
   if (abuseLimits !== undefined) {
     appOptions.abuseLimits = abuseLimits;

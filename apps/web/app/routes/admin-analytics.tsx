@@ -2,6 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
 import { seoMeta } from "../lib/seo";
 
+type FeedbackRow = {
+  id: string;
+  type: string;
+  rating: number | null;
+  message: string | null;
+  sessionId: string | null;
+  errorCode: string | null;
+  connectionType: string | null;
+  browser: string | null;
+  os: string | null;
+  sessionState: string | null;
+  sizeBucket: string | null;
+  durationMs: number | null;
+  createdAt: string;
+};
+
 type Range = "24h" | "7d" | "30d";
 
 type CountRow = { name: string; count: number };
@@ -42,6 +58,7 @@ export default function AdminAnalytics() {
     typeof window === "undefined" ? "" : (window.localStorage.getItem("handitoff_admin_token") ?? ""),
   );
   const [dashboard, setDashboard] = useState<Dashboard | undefined>();
+  const [feedback, setFeedback] = useState<FeedbackRow[] | undefined>();
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
@@ -52,15 +69,26 @@ export default function AdminAnalytics() {
     const config = loadPublicRuntimeConfig();
     const controller = new AbortController();
     setError(undefined);
-    void fetch(`${config.apiUrl}/api/admin/analytics?range=${range}`, {
-      signal: controller.signal,
-      headers: { authorization: `Bearer ${token}` },
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(response.status === 403 ? "Admin token rejected." : "Dashboard failed.");
+    const headers = { authorization: `Bearer ${token}` };
+    void Promise.all([
+      fetch(`${config.apiUrl}/api/admin/analytics?range=${range}`, {
+        signal: controller.signal,
+        headers,
+      }),
+      fetch(`${config.apiUrl}/api/admin/feedback`, {
+        signal: controller.signal,
+        headers,
+      }),
+    ])
+      .then(async ([analyticsRes, feedbackRes]) => {
+        if (!analyticsRes.ok) {
+          throw new Error(analyticsRes.status === 403 ? "Admin token rejected." : "Dashboard failed.");
         }
-        setDashboard((await response.json()) as Dashboard);
+        setDashboard((await analyticsRes.json()) as Dashboard);
+        if (feedbackRes.ok) {
+          const data = (await feedbackRes.json()) as { feedback: FeedbackRow[] };
+          setFeedback(data.feedback);
+        }
       })
       .catch((caught: unknown) => {
         if (!controller.signal.aborted) {
@@ -135,6 +163,12 @@ export default function AdminAnalytics() {
           <RecentFailures rows={dashboard.recentFailedTransfers} />
         </section>
       ) : null}
+
+      {feedback !== undefined ? (
+        <section className="admin-grid admin-grid--feedback">
+          <FeedbackPanel rows={feedback} />
+        </section>
+      ) : null}
     </main>
   );
 }
@@ -194,4 +228,54 @@ function formatDuration(value: number): string {
 function formatDate(value: string | null | undefined): string {
   if (value === null || value === undefined) return "unknown";
   return new Date(value).toLocaleString();
+}
+
+function FeedbackPanel({ rows }: { rows: FeedbackRow[] }) {
+  const errorReports = rows.filter((r) => r.type === "error_report");
+  const feedbackRows = rows.filter((r) => r.type === "feedback");
+
+  return (
+    <section className="admin-panel admin-panel-wide">
+      <h2>User reports</h2>
+      {rows.length === 0 ? <p className="admin-muted">No reports yet.</p> : null}
+
+      {feedbackRows.length > 0 ? (
+        <>
+          <h3 className="admin-subhead">Feedback ({feedbackRows.length})</h3>
+          {feedbackRows.map((row) => (
+            <div className="admin-feedback-row" key={row.id}>
+              <span className="admin-feedback-date">{formatDate(row.createdAt)}</span>
+              {row.rating !== null ? (
+                <span className="admin-feedback-stars">{"★".repeat(row.rating)}{"☆".repeat(5 - row.rating)}</span>
+              ) : null}
+              {row.message !== null ? (
+                <span className="admin-feedback-msg">{row.message}</span>
+              ) : (
+                <span className="admin-muted">No message</span>
+              )}
+              <span className="admin-muted">{row.browser ?? "?"} / {row.os ?? "?"}</span>
+            </div>
+          ))}
+        </>
+      ) : null}
+
+      {errorReports.length > 0 ? (
+        <>
+          <h3 className="admin-subhead">Error reports ({errorReports.length})</h3>
+          {errorReports.map((row) => (
+            <div className="admin-failure" key={row.id}>
+              <span>{formatDate(row.createdAt)}</span>
+              <strong>{row.errorCode ?? "transfer_failed"}</strong>
+              <span>{row.connectionType ?? "unknown"}</span>
+              <span>{row.browser ?? "?"} / {row.os ?? "?"}</span>
+              <span>{row.sizeBucket ?? "?"}{row.durationMs !== null ? ` · ${(row.durationMs / 1000).toFixed(1)}s` : ""}</span>
+              {row.message !== null ? (
+                <span className="admin-feedback-msg">{row.message}</span>
+              ) : null}
+            </div>
+          ))}
+        </>
+      ) : null}
+    </section>
+  );
 }

@@ -17,6 +17,7 @@ import {
   type CreateSessionInput,
   type SessionStore,
 } from "./session-store.js";
+import type { FeedbackInput, FeedbackStoreInterface } from "./feedback-store.js";
 
 export type ApiAppOptions = {
   config?: ServerConfig;
@@ -28,6 +29,7 @@ export type ApiAppOptions = {
   getIceServers?: () => Promise<PublicIceServer[]> | PublicIceServer[];
   analytics?: AnalyticsSink;
   analyticsDashboard?: AnalyticsDashboardStore;
+  feedbackStore?: FeedbackStoreInterface;
   abuseLimits?: HostedAbuseLimits;
 };
 
@@ -47,6 +49,20 @@ type ApiErrorCode =
   | "rate_limited"
   | "session_ended"
   | "session_expired";
+
+type FeedbackBody = {
+  type?: unknown;
+  rating?: unknown;
+  message?: unknown;
+  sessionId?: unknown;
+  errorCode?: unknown;
+  connectionType?: unknown;
+  browser?: unknown;
+  os?: unknown;
+  sessionState?: unknown;
+  sizeBucket?: unknown;
+  durationMs?: unknown;
+};
 
 type CreateSessionBody = {
   hostDeviceId?: unknown;
@@ -113,9 +129,23 @@ export function createApiApp(options: ApiAppOptions = {}) {
         return withCors(await recordAnalyticsEvent(request, requestId, analytics), request);
       }
 
+      if (request.method === "POST" && url.pathname === "/api/feedback") {
+        return withCors(
+          await submitFeedback(request, requestId, options.feedbackStore),
+          request,
+        );
+      }
+
       if (request.method === "GET" && url.pathname === "/api/admin/analytics") {
         return withCors(
           await getAdminAnalytics(request, requestId, config.adminToken, analyticsDashboard),
+          request,
+        );
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/admin/feedback") {
+        return withCors(
+          await getAdminFeedback(request, requestId, config.adminToken, options.feedbackStore),
           request,
         );
       }
@@ -359,6 +389,78 @@ async function getAdminAnalytics(
   } catch {
     return errorResponse("analytics_unavailable", "Analytics dashboard is unavailable.", 503, requestId);
   }
+}
+
+async function submitFeedback(
+  request: Request,
+  requestId: string,
+  store: FeedbackStoreInterface | undefined,
+): Promise<Response> {
+  if (store === undefined) {
+    return json({ ok: true }, { requestId, status: 202 });
+  }
+
+  const body = await readJson<FeedbackBody>(request, requestId);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  if (body.type !== "feedback" && body.type !== "error_report") {
+    return errorResponse("bad_json", "type must be 'feedback' or 'error_report'.", 400, requestId);
+  }
+
+  if (
+    body.rating !== undefined &&
+    (typeof body.rating !== "number" || body.rating < 1 || body.rating > 5)
+  ) {
+    return errorResponse("bad_json", "rating must be a number between 1 and 5.", 400, requestId);
+  }
+
+  const input: FeedbackInput = {
+    type: body.type,
+    ...(typeof body.rating === "number" ? { rating: Math.floor(body.rating) } : {}),
+    ...(typeof body.message === "string" && body.message.trim() !== "" ? { message: body.message } : {}),
+    ...(isNonEmptyString(body.sessionId, 128) ? { sessionId: body.sessionId } : {}),
+    ...(isNonEmptyString(body.errorCode, 128) ? { errorCode: body.errorCode } : {}),
+    ...(isNonEmptyString(body.connectionType, 64) ? { connectionType: body.connectionType } : {}),
+    ...(isNonEmptyString(body.browser, 64) ? { browser: body.browser } : {}),
+    ...(isNonEmptyString(body.os, 64) ? { os: body.os } : {}),
+    ...(isNonEmptyString(body.sessionState, 128) ? { sessionState: body.sessionState } : {}),
+    ...(isNonEmptyString(body.sizeBucket, 64) ? { sizeBucket: body.sizeBucket } : {}),
+    ...(typeof body.durationMs === "number" ? { durationMs: Math.floor(body.durationMs) } : {}),
+  };
+
+  store.submit(input);
+  return json({ ok: true }, { requestId, status: 202 });
+}
+
+async function getAdminFeedback(
+  request: Request,
+  requestId: string,
+  adminToken: string | undefined,
+  store: FeedbackStoreInterface | undefined,
+): Promise<Response> {
+  if (adminToken === undefined || !isAuthorizedAdmin(request, adminToken)) {
+    return errorResponse("forbidden", "Admin token is required.", 403, requestId);
+  }
+  if (store === undefined) {
+    return json({ feedback: [] }, { requestId });
+  }
+
+  try {
+    const feedback = await store.getRecent(50);
+    return json({ feedback: feedback.map(serializeFeedbackRow) }, { requestId });
+  } catch {
+    return errorResponse("analytics_unavailable", "Feedback data is unavailable.", 503, requestId);
+  }
+}
+
+function serializeFeedbackRow(row: Awaited<ReturnType<FeedbackStoreInterface["getRecent"]>>[number]) {
+  return {
+    ...row,
+    id: row.id.toString(),
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+  };
 }
 
 function publicConfig(config: PublicConfig): PublicConfig {

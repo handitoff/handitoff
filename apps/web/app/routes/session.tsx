@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { AppShell } from "../components/app-shell";
+import { FeedbackModal } from "../components/feedback-modal";
 import {
   initialClientSessionState,
   reduceClientSessionState,
@@ -22,10 +23,11 @@ import {
 } from "../lib/session-store";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
 import { seoMeta } from "../lib/seo";
-import { sizeBucketForBytes, trackEvent } from "../lib/analytics";
+import { inferBrowser, inferOs, sizeBucketForBytes, trackEvent } from "../lib/analytics";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
 import { WebRtcPeer, type WebRtcPeerEvent } from "../lib/webrtc-peer";
 import type { FileOfferMessage } from "@handitoff/protocol";
+import type { FeedbackDebugInfo } from "../lib/feedback";
 
 type StoredSessionContext = {
   sessionId: string;
@@ -53,6 +55,8 @@ type PendingIncomingOffer = {
 };
 
 type SpeedSample = { time: number; bytes: number };
+
+type ErrorReportContext = FeedbackDebugInfo & { sessionId?: string };
 
 export function meta({ params }: Route.MetaArgs) {
   return seoMeta({
@@ -103,6 +107,8 @@ export default function Session({ params }: Route.ComponentProps) {
   const [etaMap, setEtaMap] = useState<Record<string, number>>({});
   const [pairedAt, setPairedAt] = useState<number | undefined>(undefined);
   const [peerLimitReached, setPeerLimitReached] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [errorReport, setErrorReport] = useState<ErrorReportContext | null>(null);
   const limitSignalSentRef = useRef(false);
   const sessionEndScheduledRef = useRef(false);
 
@@ -301,6 +307,35 @@ export default function Session({ params }: Route.ComponentProps) {
     [getAnalyticsContext],
   );
 
+  const triggerErrorReport = useCallback(
+    (snapshot: TransferProgressSnapshot) => {
+      if (
+        snapshot.status === "canceled" ||
+        snapshot.issue === "file_too_large" ||
+        snapshot.issue === "too_many_files" ||
+        snapshot.issue === "transfer_too_large" ||
+        snapshot.issue === "unsupported_file" ||
+        snapshot.issue === "browser_limit"
+      ) {
+        return;
+      }
+      const transfer = transferAnalyticsRef.current.get(snapshot.transferId);
+      const durationMs = transfer !== undefined ? Date.now() - transfer.startedAt : undefined;
+      const current = stateRef.current;
+      setErrorReport({
+        sessionId: current.sessionId,
+        errorCode: snapshot.issue ?? "transfer_failed",
+        connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+        browser: inferBrowser(navigator.userAgent),
+        os: inferOs(navigator.userAgent),
+        sessionState: current.connection,
+        sizeBucket: sizeBucketForBytes(snapshot.totalBytes),
+        ...(durationMs !== undefined ? { durationMs } : {}),
+      });
+    },
+    [],
+  );
+
   const ensureTransferController = useCallback(() => {
     if (transferRef.current !== undefined || aesKeyRef.current === undefined) {
       return transferRef.current;
@@ -388,11 +423,12 @@ export default function Session({ params }: Route.ComponentProps) {
         onError: (snapshot) => {
           snapshotToTransferItem(snapshot);
           trackTransferFailed(snapshot);
+          triggerErrorReport(snapshot);
         },
       },
     });
     return transferRef.current;
-  }, [getAnalyticsContext, snapshotToTransferItem, trackTransferCompleted, trackTransferFailed]);
+  }, [getAnalyticsContext, snapshotToTransferItem, trackTransferCompleted, trackTransferFailed, triggerErrorReport]);
 
   const completeCryptoExchange = useCallback(
     async (peerPublicKey: JsonWebKey) => {
@@ -1068,6 +1104,23 @@ export default function Session({ params }: Route.ComponentProps) {
 
   return (
     <AppShell>
+      {feedbackOpen ? (
+        <FeedbackModal
+          type="feedback"
+          sessionId={state.sessionId}
+          onClose={() => setFeedbackOpen(false)}
+        />
+      ) : null}
+
+      {errorReport !== null ? (
+        <FeedbackModal
+          type="error_report"
+          sessionId={errorReport.sessionId}
+          debugInfo={errorReport}
+          onClose={() => setErrorReport(null)}
+        />
+      ) : null}
+
       {lightbox !== null ? (
         <Lightbox
           previewUrl={lightbox.previewUrl}
@@ -1148,6 +1201,14 @@ export default function Session({ params }: Route.ComponentProps) {
             </button>
             <button className="button secondary" type="button" onClick={endSession}>
               End session
+            </button>
+            <button
+              className="xfer-feedback-btn"
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              title="Share feedback"
+            >
+              Feedback
             </button>
           </div>
         </header>

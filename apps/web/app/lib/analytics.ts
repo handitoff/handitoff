@@ -90,7 +90,7 @@ function compactProperties(properties: TrackEventProperties): Record<string, str
   return compacted;
 }
 
-function inferBrowser(userAgent: string): string {
+export function inferBrowser(userAgent: string): string {
   if (/edg\//i.test(userAgent)) return "Edge";
   if (/chrome|crios/i.test(userAgent) && !/edg\//i.test(userAgent)) return "Chrome";
   if (/firefox|fxios/i.test(userAgent)) return "Firefox";
@@ -98,7 +98,7 @@ function inferBrowser(userAgent: string): string {
   return "Unknown";
 }
 
-function inferOs(userAgent: string): string {
+export function inferOs(userAgent: string): string {
   if (/windows nt/i.test(userAgent)) return "Windows";
   if (/iphone|ipad|ipod/i.test(userAgent)) return "iOS";
   if (/android/i.test(userAgent)) return "Android";

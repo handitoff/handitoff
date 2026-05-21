@@ -3342,3 +3342,234 @@ body.session-active .app-shell {
     display: none;
   }
 }
+
+/* ── Feedback button in session topbar ─────────────────── */
+
+.xfer-feedback-btn {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  font-size: 12px;
+  color: #73736f;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.xfer-feedback-btn:hover {
+  color: #0a0a0a;
+}
+
+/* ── Feedback / error-report modal ─────────────────────── */
+
+.fb-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+}
+
+.fb-modal {
+  background: #ffffff;
+  border: 1px solid #e5e5e2;
+  border-radius: 10px;
+  padding: 24px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(10, 10, 10, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fb-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fb-modal-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.fb-modal-close {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #73736f;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.fb-modal-close:hover {
+  color: #0a0a0a;
+}
+
+.fb-modal-body {
+  margin: 0;
+  font-size: 14px;
+  color: #3f3f3b;
+}
+
+.fb-stars {
+  display: flex;
+  gap: 6px;
+}
+
+.fb-star {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #d4d4d0;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.1s;
+}
+
+.fb-star--on {
+  color: #f59e0b;
+}
+
+.fb-star:hover {
+  color: #f59e0b;
+}
+
+.fb-debug {
+  border: 1px solid #e5e5e2;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.fb-debug-summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #3f3f3b;
+  user-select: none;
+  font-size: 13px;
+}
+
+.fb-debug-summary::-webkit-details-marker {
+  color: #73736f;
+}
+
+.fb-debug-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  padding: 4px 12px 10px;
+  font-size: 12px;
+}
+
+.fb-debug-grid span:nth-child(odd) {
+  color: #73736f;
+  white-space: nowrap;
+}
+
+.fb-debug-grid span:nth-child(even) {
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.fb-debug-note {
+  margin: 0;
+  padding: 6px 12px 10px;
+  font-size: 11px;
+  color: #73736f;
+  border-top: 1px solid #f0f0ee;
+}
+
+.fb-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #3f3f3b;
+}
+
+.fb-textarea {
+  width: 100%;
+  border: 1.5px solid #e5e5e2;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 72px;
+  background: #fafaf8;
+  color: #0a0a0a;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.fb-textarea:focus {
+  outline: none;
+  border-color: #0a0a0a;
+}
+
+.fb-modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.fb-thank-you {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 0;
+  color: #3f3f3b;
+  font-size: 15px;
+}
+
+.fb-thank-you-icon {
+  font-size: 28px;
+  color: #16a34a;
+}
+
+/* ── Admin feedback section ─────────────────────────────── */
+
+.admin-grid--feedback {
+  margin-top: 12px;
+}
+
+.admin-subhead {
+  font-size: 13px;
+  font-weight: 600;
+  color: #73736f;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 16px 0 8px;
+}
+
+.admin-feedback-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 8px 12px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0ee;
+  font-size: 13px;
+}
+
+.admin-feedback-date {
+  color: #73736f;
+  white-space: nowrap;
+}
+
+.admin-feedback-stars {
+  color: #f59e0b;
+  letter-spacing: -1px;
+  white-space: nowrap;
+}
+
+.admin-feedback-msg {
+  color: #18181b;
+  word-break: break-word;
+}
