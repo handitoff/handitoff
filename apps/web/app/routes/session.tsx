@@ -108,6 +108,7 @@ export default function Session({ params }: Route.ComponentProps) {
   const [pairedAt, setPairedAt] = useState<number | undefined>(undefined);
   const [peerLimitReached, setPeerLimitReached] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [errorReport, setErrorReport] = useState<ErrorReportContext | null>(null);
   const limitSignalSentRef = useRef(false);
   const sessionEndScheduledRef = useRef(false);
@@ -1195,21 +1196,84 @@ export default function Session({ params }: Route.ComponentProps) {
                 Retry
               </button>
             ) : null}
-            <span className="xfer-topbar-code">{params.code.toUpperCase()}</span>
-            <button className="button secondary" type="button" onClick={copyLink}>
-              {linkCopied ? "Copied ✓" : "Copy link"}
-            </button>
-            <button className="button secondary" type="button" onClick={endSession}>
-              End session
-            </button>
-            <button
-              className="xfer-feedback-btn"
-              type="button"
-              onClick={() => setFeedbackOpen(true)}
-              title="Share feedback"
-            >
-              Feedback
-            </button>
+
+            {/* Desktop: inline actions */}
+            <div className="xfer-topbar-actions">
+              <span className="xfer-topbar-code">{params.code.toUpperCase()}</span>
+              <button className="button secondary" type="button" onClick={copyLink}>
+                {linkCopied ? "Copied ✓" : "Copy link"}
+              </button>
+              <button className="button secondary" type="button" onClick={endSession}>
+                End session
+              </button>
+              <button
+                className="xfer-feedback-btn"
+                type="button"
+                onClick={() => setFeedbackOpen(true)}
+                title="Share feedback"
+              >
+                Feedback
+              </button>
+            </div>
+
+            {/* Mobile: overflow menu */}
+            <div className="xfer-topbar-menu">
+              <button
+                className="xfer-topbar-menu-toggle"
+                type="button"
+                aria-label="Session menu"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                  <circle cx="10" cy="4" r="1.6" fill="currentColor" />
+                  <circle cx="10" cy="10" r="1.6" fill="currentColor" />
+                  <circle cx="10" cy="16" r="1.6" fill="currentColor" />
+                </svg>
+              </button>
+              {menuOpen ? (
+                <>
+                  <div
+                    className="xfer-topbar-menu-backdrop"
+                    onClick={() => setMenuOpen(false)}
+                  />
+                  <div className="xfer-topbar-menu-dropdown" role="menu">
+                    <span className="xfer-topbar-menu-code">{params.code.toUpperCase()}</span>
+                    <button
+                      className="xfer-menu-item"
+                      type="button"
+                      role="menuitem"
+                      onClick={copyLink}
+                    >
+                      {linkCopied ? "Copied ✓" : "Copy link"}
+                    </button>
+                    <button
+                      className="xfer-menu-item"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setFeedbackOpen(true);
+                      }}
+                    >
+                      Feedback
+                    </button>
+                    <button
+                      className="xfer-menu-item xfer-menu-item--danger"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        endSession();
+                      }}
+                    >
+                      End session
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
         </header>
 

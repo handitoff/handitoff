@@ -158,6 +158,85 @@ body.session-active .app-shell {
   flex-shrink: 0;
 }
 
+.xfer-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Overflow menu — mobile only, hidden on desktop */
+.xfer-topbar-menu {
+  position: relative;
+  display: none;
+}
+
+.xfer-topbar-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: 1.5px solid #e4e4e7;
+  color: #18181b;
+  cursor: pointer;
+}
+
+.xfer-topbar-menu-toggle:hover {
+  border-color: #18181b;
+}
+
+.xfer-topbar-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.xfer-topbar-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 176px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: #fff;
+  border: 1.5px solid #18181b;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+}
+
+.xfer-topbar-menu-code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #71717a;
+  padding: 6px 10px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #e4e4e7;
+}
+
+.xfer-menu-item {
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: "Inter Tight", system-ui, sans-serif;
+  font-size: 14px;
+  color: #18181b;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.xfer-menu-item:hover {
+  background: #f4f4f4;
+}
+
+.xfer-menu-item--danger {
+  color: #b91c1c;
+}
+
 .xfer-device-svg {
   width: 32px;
   height: 32px;
@@ -3229,13 +3308,24 @@ body.session-active .app-shell {
 @media (max-width: 640px) {
   .xfer-file-counter { display: none; }
 
+  /* Trim the global chrome during a session — drop nav, keep wordmark */
+  body.session-active .chrome {
+    height: 50px;
+    padding: 0 14px;
+  }
+  body.session-active .nav { display: none; }
+
   .xfer-topbar {
     padding: 0 12px;
     height: 52px;
     gap: 8px;
   }
 
-  .xfer-topbar-right { gap: 4px; }
+  .xfer-topbar-right { gap: 6px; }
+
+  /* Collapse inline actions into the overflow menu */
+  .xfer-topbar-actions { display: none; }
+  .xfer-topbar-menu { display: block; }
 
   .xfer-sendbar {
     padding: 0 12px;
