@@ -965,8 +965,7 @@ export default function Session({ params }: Route.ComponentProps) {
   const completedCount = allTransfers.filter((i) => i.status === "complete").length;
   const localLimitReached = maxFiles > 0 && completedCount >= maxFiles && !hasActiveTransfers;
 
-  // When both peers have completed all files, end the session
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // When both peers have completed all files, end the session.
   useEffect(() => {
     if (!localLimitReached) return;
     if (!limitSignalSentRef.current && state.dataChannel === "open") {
@@ -2009,7 +2008,6 @@ function FileRow({
   const active = item.status === "transferring";
   const isIncoming = item.direction === "incoming";
   const type = getFileType(item.name);
-  const ext = item.name.split(".").pop()?.toUpperCase() ?? "";
   const canSave = done && isIncoming && item.downloadUrl !== undefined;
 
   const isLocalValidationError =
