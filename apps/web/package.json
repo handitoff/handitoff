@@ -12,17 +12,23 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@handitoff/analytics": "0.0.0",
     "@handitoff/config": "0.0.0",
     "@handitoff/crypto": "0.0.0",
-    "@handitoff/analytics": "0.0.0",
     "@handitoff/protocol": "0.0.0",
     "@handitoff/transfer": "0.0.0",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-slot": "^1.2.3",
     "@react-router/node": "7.14.0",
     "@react-router/serve": "7.14.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "isbot": "^5.1.36",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-router": "7.14.0"
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router": "7.14.0",
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@react-router/dev": "7.14.0",

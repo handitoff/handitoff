@@ -1,6 +1,7 @@
 import type { Route } from "./+types/join";
 import { useEffect, useReducer, useRef } from "react";
 import { useNavigate } from "react-router";
+import { Loader2 } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { HanditoffApiClient, ApiClientError } from "../lib/api-client";
 import { getBrowserDeviceIdentity } from "../lib/device";
@@ -169,7 +170,7 @@ export default function Join({ params }: Route.ComponentProps) {
       : state.connection === "rejected"
         ? "Not this time."
         : "No match."
-    : "Hold still...";
+    : "Hold still…";
 
   const body = isTerminal
     ? state.connection === "expired"
@@ -186,18 +187,24 @@ export default function Join({ params }: Route.ComponentProps) {
 
   return (
     <AppShell>
-      <main className="join-flow">
-        <div className="join-card">
-          <p className="join-kicker">No. 001 — Handshake</p>
-          <h1 className="join-title">{title}</h1>
-          <p className="join-body">{body}</p>
+      <main className="flex flex-1 items-center justify-center bg-zinc-950 px-6 py-12">
+        <div className="w-full max-w-md border border-zinc-800 bg-zinc-900 p-10 md:p-14">
+          <p className="mb-8 font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+            No. 001 — Handshake
+          </p>
+          <h1 className="mb-5 font-display text-5xl leading-none tracking-tight text-zinc-50 lowercase md:text-6xl">
+            {title}
+          </h1>
+          <p className="mb-10 text-base leading-relaxed text-zinc-400">{body}</p>
           {!isTerminal ? (
-            <div className="join-status">
-              <span className="join-spinner" aria-hidden="true" />
+            <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+              <Loader2 className="h-4 w-4 animate-spin text-zinc-300" aria-hidden="true" />
               <span>{pendingStatus}</span>
             </div>
           ) : (
-            <p className="join-note">You can close this tab.</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+              You can close this tab.
+            </p>
           )}
         </div>
       </main>

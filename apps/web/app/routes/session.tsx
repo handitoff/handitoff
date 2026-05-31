@@ -13,8 +13,11 @@ import {
 } from "@handitoff/transfer";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { Check, Download, MoreVertical, X } from "lucide-react";
 import { AppShell } from "../components/app-shell";
 import { FeedbackModal } from "../components/feedback-modal";
+import { Button } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import {
   initialClientSessionState,
   reduceClientSessionState,
@@ -1328,30 +1331,32 @@ export default function Session({ params }: Route.ComponentProps) {
 
       {/* Incoming approval overlay */}
       {pendingOffer !== null ? (
-        <div className="xfer-approval-overlay">
-          <div className="xfer-approval-card">
-            <p className="xfer-approval-title">Incoming files</p>
-            <p className="xfer-approval-detail">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm">
+          <div className="flex w-full max-w-md flex-col gap-4 border border-zinc-800 bg-zinc-900 p-8 text-zinc-50">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+              Incoming files
+            </p>
+            <p className="text-base leading-snug text-zinc-200">
               {peerLabel} wants to send:{" "}
-              <strong>
+              <strong className="text-zinc-50">
                 {pendingOffer.fileCount} {pendingOffer.fileCount === 1 ? "file" : "files"}
               </strong>{" "}
-              · <strong>{formatBytes(pendingOffer.totalSize)} total</strong>
+              · <strong className="text-zinc-50">{formatBytes(pendingOffer.totalSize)} total</strong>
             </p>
-            <div className="xfer-approval-actions">
-              <button className="button" type="button" onClick={approveIncoming}>
+            <div className="flex gap-2 pt-1">
+              <Button type="button" onClick={approveIncoming}>
                 Accept
-              </button>
-              <button className="button secondary" type="button" onClick={rejectIncoming}>
+              </Button>
+              <Button variant="secondary" type="button" onClick={rejectIncoming}>
                 Reject
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       ) : null}
 
       <main
-        className="xfer-stage"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
         onDragEnter={(event) => {
           event.preventDefault();
           if (canSendFiles) setDragActive(true);
@@ -1368,41 +1373,59 @@ export default function Session({ params }: Route.ComponentProps) {
           if (canSendFiles) readFiles(event.dataTransfer.files);
         }}
       >
-        <header className="xfer-topbar">
-          <div className="xfer-topbar-peer">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-zinc-900 bg-zinc-950 px-3 md:px-5">
+          <div className="flex min-w-0 items-center gap-3">
             <DeviceIcon label={peerLabel} ready={canSendFiles} />
-            <div className="xfer-device-info">
-              <span className="xfer-device-name">{peerLabel}</span>
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate text-sm font-semibold tracking-tight text-zinc-50">
+                {peerLabel}
+              </span>
               <span
-                className={`xfer-device-status${canSendFiles ? " xfer-device-status--ok" : ""}`}
+                className={cn(
+                  "font-mono text-[10px] tracking-[0.06em]",
+                  canSendFiles ? "text-emerald-400" : "text-zinc-500",
+                )}
               >
                 {connectionLabel}
               </span>
             </div>
           </div>
-          <div className="xfer-topbar-right">
+          <div className="flex shrink-0 items-center gap-2">
             {pairedAt !== undefined && !isSessionExpired ? (
-              <span className="xfer-session-timer" title="Paired session time remaining">
+              <span
+                className="hidden whitespace-nowrap font-mono text-xs font-semibold tabular-nums tracking-tight text-zinc-300 sm:inline"
+                title="Paired session time remaining"
+              >
                 {sessionTimerLabel}
               </span>
             ) : null}
             {hasChannelIssue ? (
-              <button className="button secondary" type="button" onClick={retryConnection}>
+              <Button variant="secondary" size="sm" type="button" onClick={retryConnection}>
                 Retry
-              </button>
+              </Button>
             ) : null}
 
             {/* Desktop: inline actions */}
-            <div className="xfer-topbar-actions">
-              <span className="xfer-topbar-code">{params.code.toUpperCase()}</span>
-              <button className="button secondary" type="button" onClick={copyLink}>
+            <div className="hidden items-center gap-2 sm:flex">
+              <div
+                className="flex h-9 items-center gap-2 border border-dashed border-zinc-700 bg-zinc-900 px-3"
+                title="Session code"
+              >
+                <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                  Code
+                </span>
+                <span className="font-mono text-sm font-bold tabular-nums tracking-[0.2em] text-zinc-50">
+                  {params.code.toUpperCase()}
+                </span>
+              </div>
+              <Button variant="secondary" size="sm" type="button" onClick={copyLink}>
                 {linkCopied ? "Copied ✓" : "Copy link"}
-              </button>
-              <button className="button secondary" type="button" onClick={endSession}>
+              </Button>
+              <Button variant="secondary" size="sm" type="button" onClick={endSession}>
                 End session
-              </button>
+              </Button>
               <button
-                className="xfer-feedback-btn"
+                className="px-1 text-xs text-zinc-500 underline-offset-2 hover:text-zinc-200 hover:underline"
                 type="button"
                 onClick={() => setFeedbackOpen(true)}
                 title="Share feedback"
@@ -1412,28 +1435,32 @@ export default function Session({ params }: Route.ComponentProps) {
             </div>
 
             {/* Mobile: overflow menu */}
-            <div className="xfer-topbar-menu">
+            <div className="relative sm:hidden">
               <button
-                className="xfer-topbar-menu-toggle"
+                className="flex h-9 w-9 items-center justify-center border border-zinc-800 text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-50"
                 type="button"
                 aria-label="Session menu"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((open) => !open)}
               >
-                <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-                  <circle cx="10" cy="4" r="1.6" fill="currentColor" />
-                  <circle cx="10" cy="10" r="1.6" fill="currentColor" />
-                  <circle cx="10" cy="16" r="1.6" fill="currentColor" />
-                </svg>
+                <MoreVertical className="h-4 w-4" />
               </button>
               {menuOpen ? (
                 <>
-                  <div className="xfer-topbar-menu-backdrop" onClick={() => setMenuOpen(false)} />
-                  <div className="xfer-topbar-menu-dropdown" role="menu">
-                    <span className="xfer-topbar-menu-code">{params.code.toUpperCase()}</span>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setMenuOpen(false)}
+                  />
+                  <div
+                    className="absolute right-0 top-[calc(100%+6px)] z-50 flex min-w-44 flex-col border border-zinc-800 bg-zinc-900 p-1.5 shadow-2xl shadow-black/40"
+                    role="menu"
+                  >
+                    <span className="mb-1 border-b border-zinc-800 px-2.5 pb-2 pt-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-zinc-500">
+                      {params.code.toUpperCase()}
+                    </span>
                     <button
-                      className="xfer-menu-item"
+                      className="px-2.5 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
                       type="button"
                       role="menuitem"
                       onClick={copyLink}
@@ -1441,7 +1468,7 @@ export default function Session({ params }: Route.ComponentProps) {
                       {linkCopied ? "Copied ✓" : "Copy link"}
                     </button>
                     <button
-                      className="xfer-menu-item"
+                      className="px-2.5 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
                       type="button"
                       role="menuitem"
                       onClick={() => {
@@ -1452,7 +1479,7 @@ export default function Session({ params }: Route.ComponentProps) {
                       Feedback
                     </button>
                     <button
-                      className="xfer-menu-item xfer-menu-item--danger"
+                      className="px-2.5 py-2.5 text-left text-sm text-red-400 transition-colors hover:bg-zinc-800"
                       type="button"
                       role="menuitem"
                       onClick={() => {
@@ -1471,46 +1498,42 @@ export default function Session({ params }: Route.ComponentProps) {
 
         {/* Session expired/ended banners */}
         {isSessionExpired && !isSessionEnded ? (
-          <div className="xfer-banner xfer-banner--warn">{expiredBannerText}</div>
+          <Banner variant="warn">{expiredBannerText}</Banner>
         ) : null}
         {isSessionEnded ? (
-          <div className="xfer-banner xfer-banner--info">
+          <Banner variant="info">
             <span>Session ended.</span>
-            <button className="xfer-banner-btn" type="button" onClick={() => navigate("/")}>
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={() => navigate("/")}
+            >
               Start new session
-            </button>
-          </div>
+            </Button>
+          </Banner>
         ) : null}
         {iosLargeFileWarning !== undefined ? (
-          <div className="xfer-banner xfer-banner--warn">{iosLargeFileWarning}</div>
+          <Banner variant="warn">{iosLargeFileWarning}</Banner>
         ) : null}
 
         {/* Bulk action bar */}
-        <div className="xfer-bulk-bar">
-          <span className="xfer-bulk-count">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-900 bg-zinc-950 px-4 py-1.5">
+          <span className="font-mono text-[11px] tabular-nums text-zinc-500">
             {allTransfers.length === 0
               ? "No files"
               : allTransfers.length === 1
                 ? "1 file"
                 : `${allTransfers.length} files`}
           </span>
-          <div className="xfer-bulk-actions">
+          <div className="flex flex-wrap items-center gap-1.5">
             {hasActiveTransfers ? (
-              <button className="xfer-bulk-btn" type="button" onClick={cancelAllTransfers}>
-                Cancel all
-              </button>
+              <BulkBtn onClick={cancelAllTransfers}>Cancel all</BulkBtn>
             ) : null}
-            {hasAnyFailed ? (
-              <button className="xfer-bulk-btn" type="button" onClick={removeFailedItems}>
-                Clear failed
-              </button>
-            ) : null}
+            {hasAnyFailed ? <BulkBtn onClick={removeFailedItems}>Clear failed</BulkBtn> : null}
             {hasAnyCompleted ? (
-              <button
-                className="xfer-bulk-btn"
-                type="button"
+              <BulkBtn
                 onClick={() => {
-                  // Remove only completed items
                   for (const item of allTransfers) {
                     if (item.status === "complete") {
                       dispatch({ type: "transfer:remove", id: item.id });
@@ -1519,27 +1542,25 @@ export default function Session({ params }: Route.ComponentProps) {
                 }}
               >
                 Clear completed
-              </button>
+              </BulkBtn>
             ) : null}
             {allDoneOrFailed && allTransfers.length > 0 ? (
-              <button className="xfer-bulk-btn" type="button" onClick={clearAllItems}>
-                Clear all
-              </button>
+              <BulkBtn onClick={clearAllItems}>Clear all</BulkBtn>
             ) : null}
           </div>
         </div>
 
-        <div className="xfer-pool">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-950">
           {allTransfers.length === 0 ? (
-            <div className="xfer-pool-empty">
-              <p className="xfer-pool-empty-title">
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+              <p className="m-0 text-sm font-semibold text-zinc-400">
                 {isSessionExpired
                   ? "Session expired"
                   : canSendFiles
                     ? "No files yet"
                     : lastDataChannelMessage}
               </p>
-              <p className="xfer-pool-empty-sub">
+              <p className="m-0 max-w-sm text-sm leading-relaxed text-zinc-600">
                 {isSessionExpired
                   ? "Start a new session to transfer more files."
                   : hasChannelIssue
@@ -1551,18 +1572,13 @@ export default function Session({ params }: Route.ComponentProps) {
                       : channelFootnote}
               </p>
               {isSessionExpired ? (
-                <button
-                  className="button"
-                  type="button"
-                  style={{ marginTop: 16 }}
-                  onClick={() => navigate("/")}
-                >
+                <Button type="button" className="mt-4" onClick={() => navigate("/")}>
                   Start new session
-                </button>
+                </Button>
               ) : null}
             </div>
           ) : (
-            <div className="xfer-pool-list">
+            <div className="m-3 flex flex-col overflow-hidden border border-zinc-900">
               {allTransfers.map((item) => {
                 const previewUrl = getPreviewUrl(item);
                 const speed = speedMap[item.id];
@@ -1596,7 +1612,7 @@ export default function Session({ params }: Route.ComponentProps) {
           )}
         </div>
 
-        <footer className="xfer-sendbar">
+        <footer className="flex h-14 shrink-0 items-center gap-3 border-t border-zinc-900 bg-zinc-950 px-3 md:px-5">
           <input
             ref={inputRef}
             type="file"
@@ -1607,13 +1623,13 @@ export default function Session({ params }: Route.ComponentProps) {
             disabled={!canSendFiles}
           />
           {canSendFiles ? (
-            <span className="xfer-sendbar-hint">
+            <span className="flex-1 text-sm text-zinc-500">
               {dragActive ? "Release to send" : "Drop files here or"}
             </span>
           ) : (
-            <span className="xfer-sendbar-status">{channelFootnote}</span>
+            <span className="flex-1 truncate text-xs text-zinc-500">{channelFootnote}</span>
           )}
-          <button className="button" type="button" onClick={chooseFiles} disabled={!canSendFiles}>
+          <Button type="button" size="sm" onClick={chooseFiles} disabled={!canSendFiles}>
             {canSendFiles
               ? "Choose files"
               : isSessionExpired
@@ -1621,25 +1637,38 @@ export default function Session({ params }: Route.ComponentProps) {
                 : state.dataChannel === "open"
                   ? "Securing…"
                   : "Connecting…"}
-          </button>
+          </Button>
           {hasAnyFailed ? (
-            <button
-              className="button secondary xfer-sendbar-clear"
-              type="button"
-              onClick={removeFailedItems}
-            >
+            <Button variant="secondary" size="sm" type="button" onClick={removeFailedItems}>
               Clear failed
-            </button>
+            </Button>
           ) : null}
           {state.dataChannel === "open" && state.crypto === "ready" && !isSessionExpired ? (
-            <div className="xfer-file-counter">
-              <div className="xfer-file-counter-track">
+            <div
+              className={cn(
+                "hidden h-9 shrink-0 items-center gap-2.5 border bg-zinc-900 px-3 sm:flex",
+                localLimitReached ? "border-emerald-700/60" : "border-zinc-800",
+              )}
+              title={`${completedCount} of ${maxFiles} files used this session`}
+            >
+              <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Files
+              </span>
+              <div className="h-1.5 w-20 overflow-hidden bg-zinc-800">
                 <div
-                  className={`xfer-file-counter-fill${localLimitReached ? " xfer-file-counter-fill--full" : ""}`}
+                  className={cn(
+                    "h-full transition-[width] duration-300",
+                    localLimitReached ? "bg-emerald-500" : "bg-zinc-50",
+                  )}
                   style={{ width: `${Math.min(100, (completedCount / maxFiles) * 100)}%` }}
                 />
               </div>
-              <span className="xfer-file-counter-label">
+              <span
+                className={cn(
+                  "whitespace-nowrap font-mono text-xs font-bold tabular-nums",
+                  localLimitReached ? "text-emerald-400" : "text-zinc-50",
+                )}
+              >
                 {completedCount}/{maxFiles}
               </span>
             </div>
@@ -1647,6 +1676,45 @@ export default function Session({ params }: Route.ComponentProps) {
         </footer>
       </main>
     </AppShell>
+  );
+}
+
+function Banner({
+  variant,
+  children,
+}: {
+  variant: "warn" | "info";
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-between gap-3 border-b px-5 py-2 text-[13px]",
+        variant === "warn"
+          ? "border-amber-900/60 bg-amber-950/40 text-amber-200"
+          : "border-sky-900/60 bg-sky-950/40 text-sky-200",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function BulkBtn({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center whitespace-nowrap border border-zinc-800 px-2.5 py-1 text-[11px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-50"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -1718,7 +1786,7 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   const isLaptop = l.includes("macbook") || (l.includes("mac") && !l.includes("android"));
   const isDesktop = l.includes("pc") || l.includes("windows") || l.includes("linux");
 
-  const stroke = "#0a0a0a";
+  const stroke = "#fafafa";
   const sw = "1.5";
   const common = {
     fill: "none",
@@ -1728,9 +1796,12 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
     strokeLinejoin: "round" as const,
   };
 
+  const baseClass = "h-7 w-7 shrink-0 md:h-8 md:w-8";
+  const tallClass = "h-9 w-5 shrink-0 md:h-10 md:w-[22px]";
+
   if (isLaptop) {
     return (
-      <svg className="xfer-device-svg" viewBox="0 0 56 56" aria-hidden="true" {...common}>
+      <svg className={baseClass} viewBox="0 0 56 56" aria-hidden="true" {...common}>
         <rect x="4" y="2" width="48" height="34" rx="3" />
         <circle cx="28" cy="7" r="1.5" fill={stroke} stroke="none" />
         <text
@@ -1752,7 +1823,7 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   }
   if (isDesktop) {
     return (
-      <svg className="xfer-device-svg" viewBox="0 0 56 56" aria-hidden="true" {...common}>
+      <svg className={baseClass} viewBox="0 0 56 56" aria-hidden="true" {...common}>
         <rect x="2" y="2" width="52" height="36" rx="3" />
         <text
           x="28"
@@ -1773,12 +1844,7 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   }
   if (isTablet) {
     return (
-      <svg
-        className="xfer-device-svg xfer-device-svg--tall"
-        viewBox="0 0 44 68"
-        aria-hidden="true"
-        {...common}
-      >
+      <svg className={tallClass} viewBox="0 0 44 68" aria-hidden="true" {...common}>
         <rect x="3" y="2" width="38" height="64" rx="5" />
         <circle cx="22" cy="8" r="2" fill={stroke} stroke="none" />
         <circle cx="22" cy="60" r="3" />
@@ -1797,12 +1863,7 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
     );
   }
   return (
-    <svg
-      className="xfer-device-svg xfer-device-svg--tall"
-      viewBox="0 0 36 68"
-      aria-hidden="true"
-      {...common}
-    >
+    <svg className={tallClass} viewBox="0 0 36 68" aria-hidden="true" {...common}>
       <rect x="2" y="2" width="32" height="64" rx="7" />
       <rect x="12" y="9" width="12" height="4" rx="2" fill={stroke} stroke="none" />
       <rect x="11" y="57" width="14" height="3" rx="1.5" fill={stroke} stroke="none" />
@@ -1823,20 +1884,30 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
 
 function FileTypeIcon({ name, size }: { name: string; size?: number }) {
   const type = getFileType(name);
+  const w = size ?? 28;
+  const style = { width: w, height: w };
+  const strokeMap: Record<string, string> = {
+    image: "#60a5fa",
+    video: "#fbbf24",
+    audio: "#34d399",
+    pdf: "#f87171",
+    archive: "#a78bfa",
+    code: "#2dd4bf",
+    file: "#a1a1aa",
+  };
   const s = {
     viewBox: "0 0 32 32",
-    fill: "none",
+    fill: "none" as const,
+    stroke: strokeMap[type],
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
     strokeWidth: "1.5",
     "aria-hidden": true as const,
   };
-  const w = size ?? 28;
-  const style = { width: w, height: w };
 
   if (type === "image")
     return (
-      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <svg {...s} style={style}>
         <rect x="3" y="3" width="26" height="26" rx="3" />
         <circle cx="11" cy="12" r="2.5" />
         <path d="M3 23 l8-8 5 5 4-4 9 9" />
@@ -1844,14 +1915,14 @@ function FileTypeIcon({ name, size }: { name: string; size?: number }) {
     );
   if (type === "video")
     return (
-      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <svg {...s} style={style}>
         <rect x="2" y="6" width="20" height="20" rx="3" />
         <path d="M22 12 l8-4v16l-8-4V12z" />
       </svg>
     );
   if (type === "audio")
     return (
-      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <svg {...s} style={style}>
         <circle cx="16" cy="16" r="13" />
         <circle cx="16" cy="16" r="4" />
         <path d="M16 3a13 13 0 0 1 9.2 22.2" />
@@ -1859,7 +1930,7 @@ function FileTypeIcon({ name, size }: { name: string; size?: number }) {
     );
   if (type === "pdf")
     return (
-      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <svg {...s} style={style}>
         <path d="M6 2h14l8 8v20H6V2z" />
         <path d="M20 2v8h8" />
         <path d="M9 17h6M9 21h10M9 25h4" />
@@ -1867,7 +1938,7 @@ function FileTypeIcon({ name, size }: { name: string; size?: number }) {
     );
   if (type === "archive")
     return (
-      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <svg {...s} style={style}>
         <rect x="3" y="12" width="26" height="18" rx="2" />
         <path d="M3 12 L8 2h16l5 10" />
         <line x1="13" y1="2" x2="13" y2="12" />
@@ -1877,20 +1948,30 @@ function FileTypeIcon({ name, size }: { name: string; size?: number }) {
     );
   if (type === "code")
     return (
-      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+      <svg {...s} style={style}>
         <path d="M6 2h14l8 8v20H6V2z" />
         <path d="M20 2v8h8" />
         <path d="M11 19 l4-3-4-3M16 22h7" />
       </svg>
     );
   return (
-    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--file`}>
+    <svg {...s} style={style}>
       <path d="M6 2h14l8 8v20H6V2z" />
       <path d="M20 2v8h8" />
       <path d="M9 18h14M9 22h10" />
     </svg>
   );
 }
+
+const THUMB_BG: Record<string, string> = {
+  image: "bg-blue-950/40",
+  video: "bg-amber-950/40",
+  audio: "bg-emerald-950/40",
+  pdf: "bg-red-950/40",
+  archive: "bg-violet-950/40",
+  code: "bg-teal-950/40",
+  file: "bg-zinc-800/60",
+};
 
 function FileRow({
   item,
@@ -1944,64 +2025,97 @@ function FileRow({
 
   const fromLabel = isIncoming ? `↓ ${peerLabel}` : `↑ ${localLabel}`;
 
-  // List row layout
   return (
     <div
-      className={`xfer-row${done ? " xfer-row--done" : ""}${failed || canceled ? " xfer-row--failed" : ""}`}
+      className={cn(
+        "flex min-h-[56px] items-center gap-3 border-b border-zinc-900 bg-zinc-950 px-3.5 py-2.5 last:border-b-0",
+        done && "bg-zinc-900/30",
+        (failed || canceled) && "bg-red-950/20",
+      )}
     >
       <button
-        className={`xfer-row-thumb xfer-thumb--${type}`}
+        className={cn(
+          "flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden border-0 p-0",
+          THUMB_BG[type],
+        )}
         type="button"
         onClick={onOpenLightbox}
         aria-label={`Preview ${item.name}`}
         tabIndex={previewUrl !== undefined || done ? 0 : -1}
       >
         {previewUrl !== undefined ? (
-          <img src={previewUrl} alt="" className="xfer-row-img" />
+          <img src={previewUrl} alt="" className="h-full w-full object-cover" />
         ) : (
           <FileTypeIcon name={item.name} size={20} />
         )}
       </button>
-      <div className="xfer-row-body">
-        <div className="xfer-row-top">
-          <span className="xfer-row-name" title={item.name}>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span
+            className="min-w-0 flex-1 truncate text-[13px] font-medium tracking-tight text-zinc-100"
+            title={item.name}
+          >
             {item.name}
           </span>
-          <span className="xfer-row-direction">{fromLabel}</span>
+          <span className="shrink-0 whitespace-nowrap text-[11px] text-zinc-500">{fromLabel}</span>
         </div>
-        <div className="xfer-row-bottom">
-          <span className="xfer-row-size">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] tabular-nums text-zinc-500">
             {active && item.bytesTransferred !== undefined
               ? `${formatBytes(item.bytesTransferred)} / ${formatBytes(item.size)}`
               : formatBytes(item.size)}
           </span>
-          {active ? <span className="xfer-row-pct">{pct}%</span> : null}
+          {active ? (
+            <span className="text-[11px] tabular-nums text-zinc-400">{pct}%</span>
+          ) : null}
           {active && speedBps !== undefined ? (
-            <span className="xfer-row-speed">
+            <span className="text-[11px] tabular-nums text-zinc-400">
               {formatSpeed(speedBps)}
               {etaSeconds !== undefined ? ` · ${formatEta(etaSeconds)}` : ""}
             </span>
           ) : null}
-          {done ? <span className="xfer-row-status xfer-row-status--done">Complete</span> : null}
-          {failed ? <span className="xfer-row-status xfer-row-status--fail">Failed</span> : null}
+          {done ? (
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+              Complete
+            </span>
+          ) : null}
+          {failed ? (
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-red-400">
+              Failed
+            </span>
+          ) : null}
           {canceled ? (
-            <span className="xfer-row-status xfer-row-status--canceled">Cancelled</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Cancelled
+            </span>
           ) : null}
           {offered && !active ? (
-            <span className="xfer-row-status xfer-row-status--queued">Queued</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+              Queued
+            </span>
           ) : null}
         </div>
         {(active || offered) && !done && !failed && !canceled ? (
-          <div className="xfer-row-bar">
-            <div className="xfer-row-bar-fill" style={{ width: `${pct}%` }} />
+          <div className="mt-1 h-0.5 overflow-hidden bg-zinc-800">
+            <div
+              className="h-full bg-zinc-50 transition-[width] duration-300"
+              style={{ width: `${pct}%` }}
+            />
           </div>
         ) : null}
-        {errorMessage !== undefined ? <div className="xfer-row-error">{errorMessage}</div> : null}
+        {errorMessage !== undefined ? (
+          <div className="mt-1 text-[11px] leading-snug text-red-400">{errorMessage}</div>
+        ) : null}
       </div>
-      <div className="xfer-row-actions">
+      <div className="flex shrink-0 items-center gap-1.5">
         {canSave ? (
           <a
-            className={`xfer-row-save${downloaded ? " xfer-row-save--saved" : ""}`}
+            className={cn(
+              "inline-flex h-8 items-center justify-center whitespace-nowrap px-2.5 text-xs font-semibold transition-colors",
+              downloaded
+                ? "bg-emerald-600 text-zinc-50"
+                : "bg-zinc-50 text-zinc-950 hover:bg-zinc-200",
+            )}
             href={item.downloadUrl}
             download={item.name}
             onClick={(e) => {
@@ -2009,32 +2123,34 @@ function FileRow({
               onDownload();
             }}
           >
-            {downloaded ? "✓" : "↓ Save"}
+            {downloaded ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <>
+                <Download className="mr-1 h-3 w-3" /> Save
+              </>
+            )}
           </a>
         ) : null}
         {active || offered ? (
           <button
-            className="xfer-row-btn xfer-row-btn--cancel"
+            className="inline-flex h-8 items-center justify-center whitespace-nowrap border border-zinc-800 px-2 text-xs text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-200"
             type="button"
             onClick={() => onCancel(item.id, item.fileId)}
             aria-label="Cancel"
           >
-            ×
+            <X className="h-3.5 w-3.5" />
           </button>
         ) : null}
         {done ? (
-          <button className="xfer-row-btn" type="button" onClick={() => onRemove(item.id)}>
-            Dismiss
-          </button>
+          <RowGhostBtn onClick={() => onRemove(item.id)}>Dismiss</RowGhostBtn>
         ) : null}
         {failed || canceled ? (
-          <button className="xfer-row-btn" type="button" onClick={() => onRemove(item.id)}>
-            Remove
-          </button>
+          <RowGhostBtn onClick={() => onRemove(item.id)}>Remove</RowGhostBtn>
         ) : null}
         {failed && isRetryable ? (
           <button
-            className="xfer-row-btn xfer-row-btn--retry"
+            className="inline-flex h-8 items-center justify-center whitespace-nowrap border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-100 transition-colors hover:bg-zinc-900"
             type="button"
             onClick={() => onRetry(item.id)}
           >
@@ -2043,6 +2159,24 @@ function FileRow({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function RowGhostBtn({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-8 items-center justify-center whitespace-nowrap border border-zinc-800 px-2.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -2071,35 +2205,67 @@ function Lightbox({
 
   return (
     <div
-      className="xfer-lightbox"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 p-5 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={`Preview of ${name}`}
     >
-      <button className="xfer-lightbox-close" type="button" onClick={onClose} aria-label="Close">
-        ×
+      <button
+        className="absolute right-0 top-0 flex h-14 w-14 items-center justify-center text-zinc-500 transition-colors hover:text-zinc-50"
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+      >
+        <X className="h-6 w-6" />
       </button>
 
-      <div className="xfer-lightbox-content" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="flex w-full max-w-[min(90vw,900px)] flex-col overflow-hidden border border-zinc-900 bg-zinc-950"
+        onClick={(e) => e.stopPropagation()}
+      >
         {previewUrl !== undefined ? (
-          <img src={previewUrl} alt={name} className="xfer-lightbox-img" />
+          <img
+            src={previewUrl}
+            alt={name}
+            className="block w-full bg-zinc-950 object-contain"
+            style={{ maxHeight: "calc(100svh - 160px)" }}
+          />
         ) : (
-          <div className={`xfer-lightbox-icon xfer-thumb--${getFileType(name)}`}>
+          <div
+            className={cn(
+              "flex aspect-[4/3] w-full items-center justify-center",
+              THUMB_BG[getFileType(name)],
+            )}
+            style={{ maxHeight: "calc(100svh - 160px)" }}
+          >
             <FileTypeIcon name={name} size={72} />
           </div>
         )}
 
-        <div className="xfer-lightbox-bar">
-          <span className="xfer-lightbox-name">{name}</span>
+        <div className="flex min-h-14 items-center gap-3 border-t border-zinc-900 bg-zinc-900 px-5 py-3.5">
+          <span className="flex-1 truncate text-[13px] tracking-tight text-zinc-400">{name}</span>
           {downloadUrl !== undefined ? (
             <a
-              className={`xfer-lightbox-dl${downloaded ? " xfer-lightbox-dl--saved" : ""}`}
+              className={cn(
+                "inline-flex h-9 shrink-0 items-center whitespace-nowrap px-4 text-sm font-semibold transition-colors",
+                downloaded
+                  ? "bg-emerald-600 text-zinc-50"
+                  : "bg-zinc-50 text-zinc-950 hover:bg-zinc-200",
+              )}
               href={downloadUrl}
               download={name}
               onClick={onDownload}
             >
-              {downloaded ? "✓ Saved" : "↓ Save"}
+              {downloaded ? (
+                <>
+                  <Check className="mr-1.5 h-4 w-4" /> Saved
+                </>
+              ) : (
+                <>
+                  <Download className="mr-1.5 h-4 w-4" /> Save
+                </>
+              )}
             </a>
           ) : null}
         </div>

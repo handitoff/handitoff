@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { loadPublicRuntimeConfig } from "../lib/runtime-config";
 import { seoMeta } from "../lib/seo";
+import { Input } from "../components/ui/input";
+import { cn } from "../lib/utils";
 
 type FeedbackRow = {
   id: string;
@@ -127,41 +129,59 @@ export default function AdminAnalytics() {
   );
 
   return (
-    <main className="admin-analytics">
-      <header className="admin-analytics-head">
+    <main className="min-h-svh bg-zinc-950 px-6 py-10 text-zinc-100">
+      <header className="mb-8 grid grid-cols-1 items-end gap-4 md:grid-cols-[1fr_auto]">
         <div>
-          <p className="admin-kicker">Internal</p>
-          <h1>Product analytics</h1>
+          <p className="mb-1 font-mono text-xs uppercase tracking-[0.22em] text-zinc-500">
+            Internal
+          </p>
+          <h1 className="font-display text-4xl lowercase tracking-tight text-zinc-50 md:text-5xl">
+            Product analytics
+          </h1>
         </div>
-        <div className="admin-controls">
-          <select value={range} onChange={(event) => setRange(event.target.value as Range)}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <select
+            value={range}
+            onChange={(event) => setRange(event.target.value as Range)}
+            className="h-11 border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
+          >
             <option value="24h">Last 24 hours</option>
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
           </select>
-          <input
+          <Input
             type="password"
             value={token}
             onChange={(event) => setToken(event.target.value)}
             placeholder="Admin token"
             aria-label="Admin token"
+            className="w-56"
           />
         </div>
       </header>
 
-      {error !== undefined ? <p className="admin-error">{error}</p> : null}
+      {error !== undefined ? (
+        <p className="mb-6 border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+          {error}
+        </p>
+      ) : null}
 
-      <section className="admin-card-grid">
+      <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-9">
         {cards.map(([label, value]) => (
-          <div className="admin-card" key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
+          <div
+            key={label}
+            className="border border-zinc-800 bg-zinc-900 p-4"
+          >
+            <span className="text-xs text-zinc-500">{label}</span>
+            <strong className="mt-2 block font-display text-2xl tracking-tight text-zinc-50">
+              {value}
+            </strong>
           </div>
         ))}
       </section>
 
       {dashboard !== undefined ? (
-        <section className="admin-grid">
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Breakdown title="Device events" rows={dashboard.deviceEvents ?? []} />
           <Breakdown title="Session events" rows={dashboard.sessionEvents ?? []} />
           <Breakdown
@@ -181,7 +201,7 @@ export default function AdminAnalytics() {
       ) : null}
 
       {feedback !== undefined ? (
-        <section className="admin-grid admin-grid--feedback">
+        <section className="mt-4 grid grid-cols-1">
           <FeedbackPanel rows={feedback} />
         </section>
       ) : null}
@@ -189,44 +209,73 @@ export default function AdminAnalytics() {
   );
 }
 
+function Panel({
+  title,
+  wide,
+  children,
+}: {
+  title: string;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        "border border-zinc-800 bg-zinc-900 p-4",
+        wide && "lg:col-span-3",
+      )}
+    >
+      <h2 className="mb-3 font-display text-lg lowercase tracking-tight text-zinc-50">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
 function Breakdown({ title, rows }: { title: string; rows: CountRow[] }) {
   const max = Math.max(1, ...rows.map((row) => row.count));
   return (
-    <section className="admin-panel">
-      <h2>{title}</h2>
-      {rows.length === 0 ? <p className="admin-muted">No events.</p> : null}
+    <Panel title={title}>
+      {rows.length === 0 ? <p className="text-sm text-zinc-500">No events.</p> : null}
       {rows.map((row) => (
-        <div className="admin-row" key={row.name}>
-          <span>{row.name}</span>
-          <div className="admin-bar" aria-hidden="true">
-            <i style={{ width: `${(row.count / max) * 100}%` }} />
+        <div
+          key={row.name}
+          className="mt-2 grid grid-cols-[minmax(96px,1fr)_2fr_auto] items-center gap-3"
+        >
+          <span className="truncate text-sm text-zinc-400">{row.name}</span>
+          <div className="h-2 overflow-hidden rounded-full bg-zinc-800" aria-hidden="true">
+            <i
+              className="block h-full rounded-[inherit] bg-zinc-50"
+              style={{ width: `${(row.count / max) * 100}%` }}
+            />
           </div>
-          <strong>{row.count.toLocaleString()}</strong>
+          <strong className="tabular-nums text-zinc-50">{row.count.toLocaleString()}</strong>
         </div>
       ))}
-    </section>
+    </Panel>
   );
 }
 
 function RecentFailures({ rows }: { rows: Array<Record<string, string | null>> }) {
   return (
-    <section className="admin-panel admin-panel-wide">
-      <h2>Recent failed transfers</h2>
-      {rows.length === 0 ? <p className="admin-muted">No failed transfers.</p> : null}
+    <Panel title="Recent failed transfers" wide>
+      {rows.length === 0 ? <p className="text-sm text-zinc-500">No failed transfers.</p> : null}
       {rows.map((row, index) => (
-        <div className="admin-failure" key={`${row.transferId ?? index}-${row.createdAt ?? index}`}>
-          <span>{formatDate(row.createdAt)}</span>
-          <strong>{row.failureCode ?? "transfer_failed"}</strong>
-          <span>{row.failureStage ?? row.errorStage ?? "unknown"}</span>
-          <span>
+        <div
+          key={`${row.transferId ?? index}-${row.createdAt ?? index}`}
+          className="grid grid-cols-1 items-center gap-x-3 gap-y-1 border-t border-zinc-800 py-2.5 text-sm md:grid-cols-[160px_160px_120px_1fr_180px]"
+        >
+          <span className="text-zinc-500">{formatDate(row.createdAt)}</span>
+          <strong className="text-zinc-100">{row.failureCode ?? "transfer_failed"}</strong>
+          <span className="text-zinc-500">{row.failureStage ?? row.errorStage ?? "unknown"}</span>
+          <span className="text-zinc-500">
             {row.browser ?? "Unknown"} / {row.os ?? "Unknown"} / {row.deviceType ?? "unknown"}
           </span>
-          <span>
+          <span className="text-zinc-500">
             {row.sizeBucket ?? "unknown"} / {row.connectionType ?? "unknown"}
           </span>
         </div>
       ))}
-    </section>
+    </Panel>
   );
 }
 
@@ -255,28 +304,32 @@ function FeedbackPanel({ rows }: { rows: FeedbackRow[] }) {
   const feedbackRows = rows.filter((r) => r.type === "feedback");
 
   return (
-    <section className="admin-panel admin-panel-wide">
-      <h2>User reports</h2>
-      {rows.length === 0 ? <p className="admin-muted">No reports yet.</p> : null}
+    <Panel title="User reports" wide>
+      {rows.length === 0 ? <p className="text-sm text-zinc-500">No reports yet.</p> : null}
 
       {feedbackRows.length > 0 ? (
         <>
-          <h3 className="admin-subhead">Feedback ({feedbackRows.length})</h3>
+          <h3 className="mb-2 mt-4 text-[13px] font-semibold uppercase tracking-wide text-zinc-500">
+            Feedback ({feedbackRows.length})
+          </h3>
           {feedbackRows.map((row) => (
-            <div className="admin-feedback-row" key={row.id}>
-              <span className="admin-feedback-date">{formatDate(row.createdAt)}</span>
+            <div
+              key={row.id}
+              className="grid grid-cols-1 items-baseline gap-x-3 gap-y-1 border-b border-zinc-800/60 py-2 text-sm md:grid-cols-[auto_auto_1fr_auto]"
+            >
+              <span className="whitespace-nowrap text-zinc-500">{formatDate(row.createdAt)}</span>
               {row.rating !== null ? (
-                <span className="admin-feedback-stars">
+                <span className="tracking-tighter text-amber-400">
                   {"★".repeat(row.rating)}
-                  {"☆".repeat(5 - row.rating)}
+                  <span className="text-zinc-700">{"★".repeat(5 - row.rating)}</span>
                 </span>
               ) : null}
               {row.message !== null ? (
-                <span className="admin-feedback-msg">{row.message}</span>
+                <span className="break-words text-zinc-100">{row.message}</span>
               ) : (
-                <span className="admin-muted">No message</span>
+                <span className="text-zinc-500">No message</span>
               )}
-              <span className="admin-muted">
+              <span className="text-zinc-500">
                 {row.browser ?? "?"} / {row.os ?? "?"}
               </span>
             </div>
@@ -286,26 +339,31 @@ function FeedbackPanel({ rows }: { rows: FeedbackRow[] }) {
 
       {errorReports.length > 0 ? (
         <>
-          <h3 className="admin-subhead">Error reports ({errorReports.length})</h3>
+          <h3 className="mb-2 mt-6 text-[13px] font-semibold uppercase tracking-wide text-zinc-500">
+            Error reports ({errorReports.length})
+          </h3>
           {errorReports.map((row) => (
-            <div className="admin-failure" key={row.id}>
-              <span>{formatDate(row.createdAt)}</span>
-              <strong>{row.errorCode ?? "transfer_failed"}</strong>
-              <span>{row.connectionType ?? "unknown"}</span>
-              <span>
+            <div
+              key={row.id}
+              className="grid grid-cols-1 items-center gap-x-3 gap-y-1 border-t border-zinc-800 py-2.5 text-sm md:grid-cols-[160px_160px_120px_1fr_180px]"
+            >
+              <span className="text-zinc-500">{formatDate(row.createdAt)}</span>
+              <strong className="text-zinc-100">{row.errorCode ?? "transfer_failed"}</strong>
+              <span className="text-zinc-500">{row.connectionType ?? "unknown"}</span>
+              <span className="text-zinc-500">
                 {row.browser ?? "?"} / {row.os ?? "?"}
               </span>
-              <span>
+              <span className="text-zinc-500">
                 {row.sizeBucket ?? "?"}
                 {row.durationMs !== null ? ` · ${(row.durationMs / 1000).toFixed(1)}s` : ""}
               </span>
               {row.message !== null ? (
-                <span className="admin-feedback-msg">{row.message}</span>
+                <span className="break-words text-zinc-100">{row.message}</span>
               ) : null}
             </div>
           ))}
         </>
       ) : null}
-    </section>
+    </Panel>
   );
 }

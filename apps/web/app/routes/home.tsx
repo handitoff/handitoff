@@ -15,6 +15,7 @@ import { seoMeta } from "../lib/seo";
 import { seoPages } from "../lib/seo-pages";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
 import { trackEvent } from "../lib/analytics";
+import { cn } from "../lib/utils";
 
 export function meta() {
   return seoMeta({
@@ -632,15 +633,24 @@ function LHowItWorks() {
   ];
 
   return (
-    <section className="el-section" id="how-it-works">
-      <div className="el-container">
-        <h2 className="el-section-title">The whole thing, end to end.</h2>
-        <div className="el-steps">
+    <section
+      className="relative border-t border-zinc-900 bg-zinc-950 px-6 py-24 text-zinc-50 md:px-12 md:py-36"
+      id="how-it-works"
+    >
+      <div className="mx-auto max-w-7xl">
+        <h2 className="font-display text-5xl leading-[0.95] tracking-tight text-zinc-50 lowercase md:text-7xl lg:text-8xl">
+          The whole thing, end to end.
+        </h2>
+        <div className="mt-24 grid grid-cols-1 gap-12 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((s) => (
-            <div key={s.n} className="el-step">
-              <div className="el-step-num">Step {s.n}</div>
-              <div className="el-step-title">{s.t}</div>
-              <p className="el-step-body">{s.d}</p>
+            <div key={s.n} className="flex flex-col gap-4 border-t border-zinc-50 pt-5">
+              <div className="font-mono text-xs uppercase tracking-[0.22em] text-zinc-500">
+                Step {s.n}
+              </div>
+              <div className="font-display text-2xl leading-tight tracking-tight text-zinc-50 lowercase">
+                {s.t}
+              </div>
+              <p className="text-base leading-relaxed text-zinc-400">{s.d}</p>
             </div>
           ))}
         </div>
@@ -669,17 +679,26 @@ function LWhy() {
   ];
 
   return (
-    <section className="el-section el-section--dark">
-      <div className="el-container">
-        <h2 className="el-why-headline">
-          Moving a file shouldn&apos;t <em>require</em> a service that knows your name.
+    <section className="bg-zinc-900 px-6 py-24 text-zinc-50 md:px-12 md:py-36">
+      <div className="mx-auto max-w-7xl">
+        <h2 className="mb-20 font-display text-4xl leading-[0.95] tracking-tight text-zinc-50 lowercase md:text-6xl lg:text-7xl">
+          Moving a file shouldn&apos;t{" "}
+          <em className="font-serif italic text-zinc-500">require</em> a service that knows your
+          name.
         </h2>
-        <div className="el-why-reasons">
+        <div className="grid grid-cols-1 md:grid-cols-3">
           {reasons.map((r) => (
-            <div key={r.n} className="el-why-reason">
-              <div className="el-why-reason-num">{r.n}</div>
-              <div className="el-why-reason-title">{r.t}</div>
-              <p className="el-why-reason-body">{r.d}</p>
+            <div
+              key={r.n}
+              className="flex flex-col gap-4 border-t border-zinc-700/60 py-7 pr-8 last:pr-0"
+            >
+              <div className="font-mono text-xs uppercase tracking-[0.22em] text-zinc-500">
+                {r.n}
+              </div>
+              <div className="font-display text-2xl leading-tight tracking-tight text-zinc-50 lowercase">
+                {r.t}
+              </div>
+              <p className="text-base leading-relaxed text-zinc-400">{r.d}</p>
             </div>
           ))}
         </div>
@@ -690,14 +709,17 @@ function LWhy() {
 
 function LQuote() {
   return (
-    <section className="el-section">
-      <div className="el-quote-inner">
-        <p className="el-quote-text">
-          &ldquo;It is the <em>shortest path</em> between two devices that I have ever used. I open
-          the tab, I scan, the file is there. The whole thing took less time than reading this
-          sentence.&rdquo;
+    <section className="border-t border-zinc-900 bg-zinc-950 px-6 py-24 md:px-12 md:py-36">
+      <div className="mx-auto max-w-4xl text-center">
+        <p className="font-sans text-2xl font-medium leading-snug tracking-tight text-zinc-100 md:text-3xl lg:text-4xl">
+          &ldquo;It is the{" "}
+          <em className="font-serif font-normal italic text-zinc-400">shortest path</em> between
+          two devices that I have ever used. I open the tab, I scan, the file is there. The whole
+          thing took less time than reading this sentence.&rdquo;
         </p>
-        <div className="el-quote-attr">A satisfied accomplice</div>
+        <div className="mt-10 font-mono text-[11px] uppercase tracking-[0.28em] text-zinc-500">
+          A satisfied accomplice
+        </div>
       </div>
     </section>
   );
@@ -728,17 +750,32 @@ function LPromises() {
   ];
 
   return (
-    <section className="el-section">
-      <div className="el-container">
-        <h2 className="el-section-title">
-          The <em>short</em> version.
+    <section className="border-t border-zinc-900 bg-zinc-950 px-6 py-24 md:px-12 md:py-36">
+      <div className="mx-auto max-w-7xl">
+        <h2 className="font-display text-5xl leading-[0.95] tracking-tight text-zinc-50 lowercase md:text-7xl lg:text-8xl">
+          The <em className="font-serif italic text-zinc-400">short</em> version.
         </h2>
-        <div className="el-promises">
-          {promises.map((p) => (
-            <div key={p.n} className="el-promise">
-              <div className="el-promise-num">{p.n}</div>
-              <div className="el-promise-title">{p.t}</div>
-              <p className="el-promise-body">{p.d}</p>
+        <div className="mt-16 grid grid-cols-1 border border-zinc-800 sm:grid-cols-2 lg:grid-cols-4">
+          {promises.map((p, i) => (
+            <div
+              key={p.n}
+              className={cn(
+                "flex flex-col gap-3 bg-zinc-900 p-8",
+                i > 0 && "border-zinc-800",
+                i > 0 && "sm:border-l",
+                i === 2 && "sm:border-l-0 lg:border-l",
+                i % 2 === 0 && "sm:border-l-0 lg:border-l-0",
+                i === 0 ? "" : "lg:border-l",
+                i >= 2 && "sm:border-t lg:border-t-0",
+              )}
+            >
+              <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+                {p.n}
+              </div>
+              <div className="font-display text-3xl leading-none tracking-tight text-zinc-50 lowercase md:text-4xl">
+                {p.t}
+              </div>
+              <p className="mt-1 text-[15px] leading-relaxed text-zinc-400">{p.d}</p>
             </div>
           ))}
         </div>
@@ -759,14 +796,28 @@ function LPopularUses() {
   ];
 
   return (
-    <section className="el-section">
-      <div className="el-container">
-        <h2 className="el-section-title">Popular ways to use handitoff.</h2>
-        <div className="el-link-grid">
-          {links.map((page) => (
-            <Link to={page.path} className="el-link-tile" key={page.path}>
-              <span>{page.content.label}</span>
-              <strong>{page.content.title}</strong>
+    <section className="border-t border-zinc-900 bg-zinc-950 px-6 py-24 md:px-12 md:py-36">
+      <div className="mx-auto max-w-7xl">
+        <h2 className="font-display text-5xl leading-[0.95] tracking-tight text-zinc-50 lowercase md:text-7xl lg:text-8xl">
+          Popular ways to use handitoff.
+        </h2>
+        <div className="mt-16 grid grid-cols-1 border-t border-zinc-50 sm:grid-cols-2 lg:grid-cols-4">
+          {links.map((page, i) => (
+            <Link
+              to={page.path}
+              key={page.path}
+              className={cn(
+                "group flex min-h-[140px] flex-col justify-between gap-4 border-b border-r border-zinc-800 bg-zinc-950 p-7 text-zinc-50 no-underline transition-colors hover:bg-zinc-900",
+                (i + 1) % 4 === 0 && "lg:border-r-0",
+                (i + 1) % 2 === 0 && "sm:border-r-0 lg:border-r",
+              )}
+            >
+              <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                {page.content.label}
+              </span>
+              <strong className="font-display text-xl leading-snug tracking-tight lowercase">
+                {page.content.title}
+              </strong>
             </Link>
           ))}
         </div>
@@ -800,16 +851,21 @@ function LFaq() {
   ];
 
   return (
-    <section className="el-section el-section--dark">
-      <div className="el-container">
-        <h2 className="el-section-title" style={{ color: "#fafafa" }}>
+    <section className="bg-zinc-900 px-6 py-24 text-zinc-50 md:px-12 md:py-36">
+      <div className="mx-auto max-w-7xl">
+        <h2 className="font-display text-5xl leading-[0.95] tracking-tight text-zinc-50 lowercase md:text-7xl lg:text-8xl">
           Things people ask.
         </h2>
-        <div className="el-faq-list">
+        <div className="mt-16">
           {items.map((it, i) => (
-            <div key={i} className="el-faq-row">
-              <h3 className="el-faq-q">{it.q}</h3>
-              <p className="el-faq-a">{it.a}</p>
+            <div
+              key={i}
+              className="grid grid-cols-1 items-start gap-4 border-t border-zinc-700/60 py-7 last:border-b md:grid-cols-2 md:gap-12"
+            >
+              <h3 className="font-display text-lg leading-tight tracking-tight text-zinc-50 lowercase md:text-2xl">
+                {it.q}
+              </h3>
+              <p className="text-base leading-relaxed text-zinc-400">{it.a}</p>
             </div>
           ))}
         </div>
