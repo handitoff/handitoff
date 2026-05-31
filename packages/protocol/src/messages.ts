@@ -170,6 +170,7 @@ export type FileChunkHeaderMessage = {
   plaintextSize: number;
   encryptedSize: number;
   iv: string;
+  plaintextSha256?: string;
 };
 
 export type FileCompleteMessage = {

@@ -61,6 +61,10 @@ type SpeedSample = { time: number; bytes: number };
 
 type ErrorReportContext = FeedbackDebugInfo & { sessionId?: string };
 
+const IOS_SAFARI_CHUNK_SIZE_BYTES = 64 * 1024;
+const IOS_SAFARI_BUFFERED_AMOUNT_LOW_THRESHOLD_BYTES = 512 * 1024;
+const IOS_SAFARI_BUFFERED_AMOUNT_PAUSE_THRESHOLD_BYTES = 2 * 1024 * 1024;
+
 export function meta({ params }: Route.MetaArgs) {
   return seoMeta({
     title: `Session ${params.code} - handitoff.io`,
@@ -396,6 +400,31 @@ export default function Session({ params }: Route.ComponentProps) {
     });
   }, []);
 
+  const failActiveTransfersForConnectionLoss = useCallback((message: string) => {
+    for (const item of [
+      ...stateRef.current.transfer.outgoing,
+      ...stateRef.current.transfer.incoming,
+    ]) {
+      if (
+        item.status !== "offered" &&
+        item.status !== "accepted" &&
+        item.status !== "transferring"
+      ) {
+        continue;
+      }
+      dispatch({
+        type: "transfer:upsert",
+        item: {
+          ...item,
+          status: "failed",
+          issue: "connection_lost",
+          error: message,
+          retryable: true,
+        },
+      });
+    }
+  }, []);
+
   const ensureTransferController = useCallback(() => {
     if (transferRef.current !== undefined || aesKeyRef.current === undefined) {
       return transferRef.current;
@@ -415,6 +444,15 @@ export default function Session({ params }: Route.ComponentProps) {
       maxFileSizeBytes: configRef.current.limits.maxFileSizeBytes,
       maxFilesPerTransfer: configRef.current.limits.maxFilesPerTransfer,
       maxTotalTransferSizeBytes: configRef.current.limits.maxTotalTransferSizeBytes,
+      ...(isLikelyIosSafari()
+        ? {
+            backpressure: {
+              lowThresholdBytes: IOS_SAFARI_BUFFERED_AMOUNT_LOW_THRESHOLD_BYTES,
+              pauseThresholdBytes: IOS_SAFARI_BUFFERED_AMOUNT_PAUSE_THRESHOLD_BYTES,
+              pollIntervalMs: 50,
+            },
+          }
+        : {}),
       createObjectUrl: (blob) => {
         const url = URL.createObjectURL(blob);
         objectUrlsRef.current.push(url);
@@ -610,10 +648,12 @@ export default function Session({ params }: Route.ComponentProps) {
       }
       if (event.type === "data-channel-close") {
         if (hasActiveTransfer(stateRef.current.transfer)) {
+          const message =
+            "The file channel closed during transfer. This usually means the paired tab closed, the device locked or slept, or one side changed networks.";
+          failActiveTransfersForConnectionLoss(message);
           dispatch({
             type: "data-channel:failed",
-            message:
-              "The file channel closed during transfer. This usually means the paired tab closed, the device locked or slept, or one side changed networks.",
+            message,
           });
           return;
         }
@@ -697,7 +737,13 @@ export default function Session({ params }: Route.ComponentProps) {
         );
       }
     },
-    [ensureTransferController, getAnalyticsContext, sendPeerControl, sendSignal],
+    [
+      ensureTransferController,
+      failActiveTransfersForConnectionLoss,
+      getAnalyticsContext,
+      sendPeerControl,
+      sendSignal,
+    ],
   );
 
   const createPeer = useCallback(
@@ -938,6 +984,11 @@ export default function Session({ params }: Route.ComponentProps) {
     !localLimitReached;
   const connectionLabel = getConnectionLabel(state, canSendFiles, hasChannelIssue, networkType);
   const channelFootnote = getChannelFootnote(state, canSendFiles, hasChannelIssue);
+  const iosSafari = isLikelyIosSafari();
+  const iosLargeFileWarning =
+    iosSafari && canSendFiles
+      ? "Keep Safari open and the screen unlocked while files transfer. iPhone Safari is best under 1 GB; 1 GB+ transfers can be unstable."
+      : undefined;
 
   const getPreviewUrl = (item: TransferItem): string | undefined => {
     if (!/\.(jpg|jpeg|png|gif|webp|bmp|avif|heic|svg)$/i.test(item.name)) return undefined;
@@ -1006,7 +1057,9 @@ export default function Session({ params }: Route.ComponentProps) {
             status: "failed",
             issue: "file_too_large",
             retryable: false,
-            error: `Exceeds the ${formatBytes(maxFileSizeBytes)} limit.`,
+            error: iosSafari
+              ? `Exceeds the ${formatBytes(maxFileSizeBytes)} limit. iPhone Safari transfers around 1 GB or larger are not fully supported.`
+              : `Exceeds the ${formatBytes(maxFileSizeBytes)} limit.`,
             bytesTransferred: 0,
           },
         });
@@ -1084,6 +1137,7 @@ export default function Session({ params }: Route.ComponentProps) {
     }
     try {
       const transferId = controller.sendFiles(validFiles, {
+        ...(iosSafari ? { chunkSizeBytes: IOS_SAFARI_CHUNK_SIZE_BYTES } : {}),
         maxHashableFileBytes: maxFileSizeBytes,
         maxFilesPerTransfer,
         maxTotalTransferSizeBytes: maxSessionBytes,
@@ -1427,6 +1481,9 @@ export default function Session({ params }: Route.ComponentProps) {
             </button>
           </div>
         ) : null}
+        {iosLargeFileWarning !== undefined ? (
+          <div className="xfer-banner xfer-banner--warn">{iosLargeFileWarning}</div>
+        ) : null}
 
         {/* Bulk action bar */}
         <div className="xfer-bulk-bar">
@@ -1614,6 +1671,9 @@ function getFileType(
 function getIssueMessage(issue: FileIssue | undefined, fallback: string): string {
   switch (issue) {
     case "file_too_large":
+      if (/iPhone Safari/i.test(fallback)) {
+        return fallback;
+      }
       return "This file is too large for the current limit. Remove it or choose a smaller file.";
     case "too_many_files":
       return "This transfer has too many files. Choose fewer files and try again.";
@@ -1621,9 +1681,12 @@ function getIssueMessage(issue: FileIssue | undefined, fallback: string): string
       return "This session has reached the current transfer size limit. Start a new session or choose fewer files.";
     case "unsupported_file":
     case "browser_limit":
-      return "This file type or size isn't supported in this browser. Try a different browser or a smaller file.";
+      return "This file type or size hit a browser limit. iPhone Safari can be unstable around 1 GB or larger; try a smaller file or send from a desktop browser.";
     case "connection_lost":
-      return "Connection lost during transfer. Keep both devices open and try again.";
+      if (/locked|offline|changed networks|data channel closed/i.test(fallback)) {
+        return `${fallback} On iPhone, keep Safari open and the screen unlocked until the transfer finishes.`;
+      }
+      return "Connection lost during transfer. Keep both devices open and try again. On iPhone, keep Safari open and the screen unlocked.";
     case "peer_disconnected":
       return "The other device left the session.";
     case "transfer_failed":
@@ -1634,6 +1697,19 @@ function getIssueMessage(issue: FileIssue | undefined, fallback: string): string
     default:
       return fallback;
   }
+}
+
+function isLikelyIosSafari(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  const ua = navigator.userAgent;
+  const platform = navigator.platform;
+  const iOS =
+    /iPad|iPhone|iPod/i.test(ua) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const webKit = /WebKit/i.test(ua);
+  const nonSafariShell = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+  return iOS && webKit && !nonSafariShell;
 }
 
 function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {

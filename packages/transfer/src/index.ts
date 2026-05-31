@@ -23,6 +23,9 @@ import {
 export const DEFAULT_CHUNK_SIZE_BYTES = 128 * 1024;
 export const DEFAULT_BUFFERED_AMOUNT_LOW_THRESHOLD_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_BUFFERED_AMOUNT_PAUSE_THRESHOLD_BYTES = 16 * 1024 * 1024;
+export const IOS_SAFARI_CHUNK_SIZE_BYTES = 64 * 1024;
+export const IOS_SAFARI_BUFFERED_AMOUNT_LOW_THRESHOLD_BYTES = 512 * 1024;
+export const IOS_SAFARI_BUFFERED_AMOUNT_PAUSE_THRESHOLD_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_MAX_HASHABLE_FILE_BYTES = DEFAULT_MAX_FILE_SIZE_BYTES;
 export const DEFAULT_MAX_FILES_PER_TRANSFER = 25;
 export const DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES = CONFIG_DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES;
@@ -171,6 +174,7 @@ type IncomingFile = {
   expectedChunkIndex: number;
   receivedBytes: number;
   chunks: ArrayBuffer[];
+  chunkHashes: string[];
   pendingHeader?: FileChunkHeaderMessage;
   status: TransferFileStatus;
 };
@@ -583,6 +587,7 @@ export class BrowserTransferController {
         expectedChunkIndex: 0,
         receivedBytes: 0,
         chunks: [],
+        chunkHashes: [],
         status: "accepted",
       });
       this.emitProgress({
@@ -655,6 +660,7 @@ export class BrowserTransferController {
     }
     const chunkCount = calculateChunkCount(file.size, transfer.chunkSizeBytes);
     let bytesSent = 0;
+    const chunkHashes: string[] = [];
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
       throwIfAborted(transfer.signal);
       if (transfer.canceled) {
@@ -671,6 +677,8 @@ export class BrowserTransferController {
       } catch (error) {
         throw toFileTransferError(error, "file_read");
       }
+      const chunkHash = base64urlEncode(await sha256(plaintext));
+      chunkHashes.push(chunkHash);
       const iv = generateAesGcmIv();
       const encrypted = await encryptAesGcm(this.options.key, plaintext, iv);
       const header: FileChunkHeaderMessage = {
@@ -682,7 +690,9 @@ export class BrowserTransferController {
         plaintextSize: plaintext.byteLength,
         encryptedSize: encrypted.byteLength,
         iv: base64urlEncode(iv),
+        plaintextSha256: chunkHash,
       };
+      await waitForBackpressure(this.options.channel, this.options.backpressure, transfer.signal);
       this.sendJson(header, "chunk_send");
       this.sendChannelData(
         encrypted,
@@ -702,13 +712,8 @@ export class BrowserTransferController {
       });
       await waitForBackpressure(this.options.channel, this.options.backpressure, transfer.signal);
     }
-    let fileBytes: ArrayBuffer;
-    try {
-      fileBytes = await file.arrayBuffer();
-    } catch (error) {
-      throw toFileTransferError(error, "file_read");
-    }
-    const digest = base64urlEncode(await sha256(fileBytes));
+    const digest = await hashChunkManifest(chunkHashes);
+    await waitForBackpressure(this.options.channel, this.options.backpressure, transfer.signal);
     this.sendJson(
       {
         type: "file:complete",
@@ -791,11 +796,20 @@ export class BrowserTransferController {
         { failureStage: "chunk_receive" },
       );
     }
+    const plaintextHash = base64urlEncode(await sha256(plaintext));
+    if (header.plaintextSha256 !== undefined && plaintextHash !== header.plaintextSha256) {
+      throw new FileTransferError(
+        "transfer_failed",
+        "Received file chunk failed integrity verification.",
+        { failureStage: "chunk_receive" },
+      );
+    }
     delete file.pendingHeader;
     file.expectedChunkIndex += 1;
     file.receivedBytes += plaintext.byteLength;
     file.status = "transferring";
     file.chunks.push(plaintext);
+    file.chunkHashes.push(plaintextHash);
     this.emitProgress({
       transferId: transfer.transferId,
       fileId: file.metadata.fileId,
@@ -827,7 +841,7 @@ export class BrowserTransferController {
     let digest: string;
     try {
       blob = new Blob(file.chunks, { type: file.metadata.mimeType });
-      digest = base64urlEncode(await sha256(await blob.arrayBuffer()));
+      digest = await hashChunkManifest(file.chunkHashes);
     } catch (error) {
       file.status = "failed";
       throw toFileTransferError(error, "file_assemble");
@@ -1154,6 +1168,12 @@ function toFileTransferError(
       failureStage: fallbackFailureStage ?? "validation",
     });
   }
+  if (/out of memory|not enough memory|quota|allocation|maximum size|blob/i.test(message)) {
+    return new FileTransferError("browser_limit", message, {
+      retryable: false,
+      failureStage: fallbackFailureStage ?? "file_assemble",
+    });
+  }
   return new FileTransferError(
     "transfer_failed",
     message,
@@ -1200,6 +1220,8 @@ function normalizeFileIssueCode(codeOrMessage: string): FileIssue {
 function isFileIssue(value: string): value is FileIssue {
   return (
     value === "file_too_large" ||
+    value === "too_many_files" ||
+    value === "transfer_too_large" ||
     value === "unsupported_file" ||
     value === "browser_limit" ||
     value === "connection_lost" ||
@@ -1208,6 +1230,18 @@ function isFileIssue(value: string): value is FileIssue {
     value === "cancelled" ||
     value === "unknown"
   );
+}
+
+async function hashChunkManifest(chunkHashes: string[]): Promise<string> {
+  const digestBytes = chunkHashes.map((hash) => base64urlDecode(hash));
+  const totalBytes = digestBytes.reduce((total, bytes) => total + bytes.byteLength, 0);
+  const manifest = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const bytes of digestBytes) {
+    manifest.set(bytes, offset);
+    offset += bytes.byteLength;
+  }
+  return base64urlEncode(await sha256(manifest));
 }
 
 function formatFileSize(bytes: number): string {

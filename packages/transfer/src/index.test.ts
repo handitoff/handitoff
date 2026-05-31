@@ -101,9 +101,7 @@ describe("@handitoff/transfer", () => {
     expect(() => validateFilesForTransfer([file], { maxFileSizeBytes: 1 })).toThrow(
       FileTransferError,
     );
-    expect(() => sender.sendFiles([file], { maxHashableFileBytes: 1 })).toThrow(
-      FileTransferError,
-    );
+    expect(() => sender.sendFiles([file], { maxHashableFileBytes: 1 })).toThrow(FileTransferError);
     expect(channel.sent).toHaveLength(0);
     await expect(sender.retryTransfer("transfer-missing")).rejects.toThrow(
       "Only failed outgoing transfers can be retried.",
@@ -198,6 +196,41 @@ describe("@handitoff/transfer", () => {
     expect(senderSnapshots.some((snapshot) => snapshot.status === "complete")).toBe(true);
     const complete = receiverSnapshots.find((snapshot) => snapshot.status === "complete");
     expect(complete?.downloadUrl).toBe("blob:test");
+  });
+
+  it("does not reread the whole source file after chunked sending", async () => {
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const senderChannel = new FakeChannel();
+    const receiverChannel = new FakeChannel();
+    senderChannel.connect(receiverChannel);
+    receiverChannel.connect(senderChannel);
+
+    const sender = new BrowserTransferController({ channel: senderChannel, key });
+    const receiver = new BrowserTransferController({
+      channel: receiverChannel,
+      key,
+      createObjectUrl: () => "blob:test",
+    });
+    receiverChannel.onData = (data) => void receiver.handleData(data);
+    senderChannel.onData = (data) => void sender.handleData(data);
+
+    const file = new File(["large enough for several chunks"], "video.mov");
+    const wholeFileRead = vi.spyOn(file, "arrayBuffer");
+
+    sender.sendFiles([file], { chunkSizeBytes: 5 });
+
+    await vi.waitFor(() => {
+      expect(
+        senderChannel.sent.some(
+          (item) => typeof item === "string" && item.includes("file:complete"),
+        ),
+      ).toBe(true);
+    });
+
+    expect(wholeFileRead).not.toHaveBeenCalled();
   });
 
   it("lets receivers reject offers cleanly", async () => {

@@ -125,6 +125,7 @@ export function validateTransferMessage(value: unknown): ValidationResult<Transf
       });
     case "file:chunk":
       return requireFields(value, ["transferId", "fileId", "iv"], {
+        optionalStrings: ["plaintextSha256"],
         integers: ["chunkIndex", "offset", "plaintextSize", "encryptedSize"],
       });
     case "file:complete":
