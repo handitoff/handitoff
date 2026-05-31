@@ -130,10 +130,7 @@ export function createApiApp(options: ApiAppOptions = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/feedback") {
-        return withCors(
-          await submitFeedback(request, requestId, options.feedbackStore),
-          request,
-        );
+        return withCors(await submitFeedback(request, requestId, options.feedbackStore), request);
       }
 
       if (request.method === "GET" && url.pathname === "/api/admin/analytics") {
@@ -387,7 +384,12 @@ async function getAdminAnalytics(
   try {
     return json(await analyticsDashboard.getDashboard(range), { requestId });
   } catch {
-    return errorResponse("analytics_unavailable", "Analytics dashboard is unavailable.", 503, requestId);
+    return errorResponse(
+      "analytics_unavailable",
+      "Analytics dashboard is unavailable.",
+      503,
+      requestId,
+    );
   }
 }
 
@@ -419,7 +421,9 @@ async function submitFeedback(
   const input: FeedbackInput = {
     type: body.type,
     ...(typeof body.rating === "number" ? { rating: Math.floor(body.rating) } : {}),
-    ...(typeof body.message === "string" && body.message.trim() !== "" ? { message: body.message } : {}),
+    ...(typeof body.message === "string" && body.message.trim() !== ""
+      ? { message: body.message }
+      : {}),
     ...(isNonEmptyString(body.sessionId, 128) ? { sessionId: body.sessionId } : {}),
     ...(isNonEmptyString(body.errorCode, 128) ? { errorCode: body.errorCode } : {}),
     ...(isNonEmptyString(body.connectionType, 64) ? { connectionType: body.connectionType } : {}),
@@ -455,7 +459,9 @@ async function getAdminFeedback(
   }
 }
 
-function serializeFeedbackRow(row: Awaited<ReturnType<FeedbackStoreInterface["getRecent"]>>[number]) {
+function serializeFeedbackRow(
+  row: Awaited<ReturnType<FeedbackStoreInterface["getRecent"]>>[number],
+) {
   return {
     ...row,
     id: row.id.toString(),
@@ -481,7 +487,10 @@ function withCors(response: Response, request: Request): Response {
   headers.set("access-control-allow-origin", origin ?? "*");
   headers.set("vary", "origin");
   headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
-  headers.set("access-control-allow-headers", "authorization,content-type,x-admin-token,x-request-id");
+  headers.set(
+    "access-control-allow-headers",
+    "authorization,content-type,x-admin-token,x-request-id",
+  );
   headers.set("access-control-expose-headers", "x-request-id");
   if (origin !== null) {
     headers.set("access-control-allow-credentials", "true");
@@ -556,8 +565,13 @@ function emptyDashboard() {
       averageMbps: 0,
     },
     funnel: [],
+    deviceEvents: [],
+    sessionEvents: [],
+    transferBatchEvents: [],
+    fileEvents: [],
     connectionTypes: [],
     sizeBuckets: [],
+    fileSizeBuckets: [],
     failures: [],
     browsers: [],
     operatingSystems: [],

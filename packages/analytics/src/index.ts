@@ -1,18 +1,36 @@
 export const ANALYTICS_EVENT_NAMES = [
   "page_view",
+  "device_page_view",
+  "device_join_page_opened",
   "session_created",
+  "session_qr_visible",
   "qr_visible",
   "join_page_opened",
+  "session_join_requested",
   "join_requested",
+  "session_peer_approved",
   "peer_approved",
+  "session_peer_rejected",
   "peer_rejected",
+  "session_peer_connected",
   "peer_connected",
+  "session_connection_failed",
   "peer_connection_failed",
+  "session_connection_type_detected",
   "connection_type_detected",
+  "transfer_batch_started",
   "transfer_started",
+  "transfer_batch_completed",
   "transfer_completed",
+  "transfer_batch_failed",
   "transfer_failed",
+  "transfer_batch_cancelled",
   "transfer_cancelled",
+  "transfer_file_started",
+  "transfer_file_completed",
+  "transfer_file_failed",
+  "transfer_file_cancelled",
+  "transfer_file_downloaded",
   "session_expired",
   "session_ended",
 ] as const;
@@ -68,10 +86,7 @@ export class ConsoleAnalyticsSink implements AnalyticsSink {
 }
 
 export function isAnalyticsEventName(value: unknown): value is AnalyticsEventName {
-  return (
-    typeof value === "string" &&
-    (ANALYTICS_EVENT_NAMES as readonly string[]).includes(value)
-  );
+  return typeof value === "string" && (ANALYTICS_EVENT_NAMES as readonly string[]).includes(value);
 }
 
 export function normalizeAnalyticsEvent(input: AnalyticsEventInput): AnalyticsEventInput {

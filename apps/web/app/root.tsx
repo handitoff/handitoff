@@ -52,7 +52,7 @@ export default function App() {
   const location = useLocation();
 
   useEffect(() => {
-    trackEvent("page_view", { page: location.pathname.slice(0, 80) });
+    trackEvent("device_page_view", { page: location.pathname.slice(0, 80) });
   }, [location.pathname]);
 
   return <Outlet />;

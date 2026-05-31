@@ -34,8 +34,13 @@ type Dashboard = {
     averageMbps: number;
   };
   funnel: CountRow[];
+  deviceEvents: CountRow[];
+  sessionEvents: CountRow[];
+  transferBatchEvents: CountRow[];
+  fileEvents: CountRow[];
   connectionTypes: CountRow[];
   sizeBuckets: CountRow[];
+  fileSizeBuckets: CountRow[];
   failures: CountRow[];
   browsers: CountRow[];
   operatingSystems: CountRow[];
@@ -55,7 +60,9 @@ export function meta() {
 export default function AdminAnalytics() {
   const [range, setRange] = useState<Range>("24h");
   const [token, setToken] = useState(() =>
-    typeof window === "undefined" ? "" : (window.localStorage.getItem("handitoff_admin_token") ?? ""),
+    typeof window === "undefined"
+      ? ""
+      : (window.localStorage.getItem("handitoff_admin_token") ?? ""),
   );
   const [dashboard, setDashboard] = useState<Dashboard | undefined>();
   const [feedback, setFeedback] = useState<FeedbackRow[] | undefined>();
@@ -82,7 +89,9 @@ export default function AdminAnalytics() {
     ])
       .then(async ([analyticsRes, feedbackRes]) => {
         if (!analyticsRes.ok) {
-          throw new Error(analyticsRes.status === 403 ? "Admin token rejected." : "Dashboard failed.");
+          throw new Error(
+            analyticsRes.status === 403 ? "Admin token rejected." : "Dashboard failed.",
+          );
         }
         setDashboard((await analyticsRes.json()) as Dashboard);
         if (feedbackRes.ok) {
@@ -153,9 +162,16 @@ export default function AdminAnalytics() {
 
       {dashboard !== undefined ? (
         <section className="admin-grid">
-          <Breakdown title="Funnel" rows={dashboard.funnel} />
+          <Breakdown title="Device events" rows={dashboard.deviceEvents ?? []} />
+          <Breakdown title="Session events" rows={dashboard.sessionEvents ?? []} />
+          <Breakdown
+            title="Transfer batches"
+            rows={dashboard.transferBatchEvents ?? dashboard.funnel}
+          />
+          <Breakdown title="File events" rows={dashboard.fileEvents ?? []} />
           <Breakdown title="Direct vs relayed" rows={dashboard.connectionTypes} />
-          <Breakdown title="Transfers by size" rows={dashboard.sizeBuckets} />
+          <Breakdown title="Transfer batch sizes" rows={dashboard.sizeBuckets} />
+          <Breakdown title="File sizes" rows={dashboard.fileSizeBuckets ?? []} />
           <Breakdown title="Failures" rows={dashboard.failures} />
           <Breakdown title="Browsers" rows={dashboard.browsers} />
           <Breakdown title="Operating systems" rows={dashboard.operatingSystems} />
@@ -201,9 +217,13 @@ function RecentFailures({ rows }: { rows: Array<Record<string, string | null>> }
         <div className="admin-failure" key={`${row.transferId ?? index}-${row.createdAt ?? index}`}>
           <span>{formatDate(row.createdAt)}</span>
           <strong>{row.failureCode ?? "transfer_failed"}</strong>
-          <span>{row.errorStage ?? "unknown"}</span>
-          <span>{row.browser ?? "Unknown"} / {row.os ?? "Unknown"} / {row.deviceType ?? "unknown"}</span>
-          <span>{row.sizeBucket ?? "unknown"} / {row.connectionType ?? "unknown"}</span>
+          <span>{row.failureStage ?? row.errorStage ?? "unknown"}</span>
+          <span>
+            {row.browser ?? "Unknown"} / {row.os ?? "Unknown"} / {row.deviceType ?? "unknown"}
+          </span>
+          <span>
+            {row.sizeBucket ?? "unknown"} / {row.connectionType ?? "unknown"}
+          </span>
         </div>
       ))}
     </section>
@@ -246,14 +266,19 @@ function FeedbackPanel({ rows }: { rows: FeedbackRow[] }) {
             <div className="admin-feedback-row" key={row.id}>
               <span className="admin-feedback-date">{formatDate(row.createdAt)}</span>
               {row.rating !== null ? (
-                <span className="admin-feedback-stars">{"★".repeat(row.rating)}{"☆".repeat(5 - row.rating)}</span>
+                <span className="admin-feedback-stars">
+                  {"★".repeat(row.rating)}
+                  {"☆".repeat(5 - row.rating)}
+                </span>
               ) : null}
               {row.message !== null ? (
                 <span className="admin-feedback-msg">{row.message}</span>
               ) : (
                 <span className="admin-muted">No message</span>
               )}
-              <span className="admin-muted">{row.browser ?? "?"} / {row.os ?? "?"}</span>
+              <span className="admin-muted">
+                {row.browser ?? "?"} / {row.os ?? "?"}
+              </span>
             </div>
           ))}
         </>
@@ -267,8 +292,13 @@ function FeedbackPanel({ rows }: { rows: FeedbackRow[] }) {
               <span>{formatDate(row.createdAt)}</span>
               <strong>{row.errorCode ?? "transfer_failed"}</strong>
               <span>{row.connectionType ?? "unknown"}</span>
-              <span>{row.browser ?? "?"} / {row.os ?? "?"}</span>
-              <span>{row.sizeBucket ?? "?"}{row.durationMs !== null ? ` · ${(row.durationMs / 1000).toFixed(1)}s` : ""}</span>
+              <span>
+                {row.browser ?? "?"} / {row.os ?? "?"}
+              </span>
+              <span>
+                {row.sizeBucket ?? "?"}
+                {row.durationMs !== null ? ` · ${(row.durationMs / 1000).toFixed(1)}s` : ""}
+              </span>
               {row.message !== null ? (
                 <span className="admin-feedback-msg">{row.message}</span>
               ) : null}

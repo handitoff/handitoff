@@ -53,16 +53,18 @@ function HeroStars() {
         <div
           key={i}
           className="l-star"
-          style={{
-            left: `${s.x}%`,
-            top: `${s.y}%`,
-            width: s.r * 2,
-            height: s.r * 2,
-            opacity: s.op,
-            ["--star-op" as string]: s.op,
-            animationDuration: `${3 + (i % 5)}s`,
-            animationDelay: `${-(i % 7)}s`,
-          } as CSSProperties}
+          style={
+            {
+              left: `${s.x}%`,
+              top: `${s.y}%`,
+              width: s.r * 2,
+              height: s.r * 2,
+              opacity: s.op,
+              ["--star-op" as string]: s.op,
+              animationDuration: `${3 + (i % 5)}s`,
+              animationDelay: `${-(i % 7)}s`,
+            } as CSSProperties
+          }
         />
       ))}
     </div>
@@ -109,18 +111,48 @@ function LNav() {
         handitoff
       </Link>
       <nav className="l-nav-right" aria-label="Main">
-        <Link to="/" className="l-nav-link l-nav-link--active l-nav-link--ancillary">Transfer</Link>
-        <a href="#how-it-works" className="l-nav-link l-nav-link--ancillary">How it works</a>
+        <Link to="/" className="l-nav-link l-nav-link--active l-nav-link--ancillary">
+          Transfer
+        </Link>
+        <a href="#how-it-works" className="l-nav-link l-nav-link--ancillary">
+          How it works
+        </a>
         <Link to="/privacy" className="l-nav-link l-nav-link--ext">
           Privacy
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style={{ marginLeft: 4, opacity: 0.6 }}>
-            <path d="M2 2h6v6M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            aria-hidden="true"
+            style={{ marginLeft: 4, opacity: 0.6 }}
+          >
+            <path
+              d="M2 2h6v6M8 2L2 8"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </Link>
         <Link to="/faq" className="l-nav-link l-nav-link--ext">
           FAQ
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style={{ marginLeft: 4, opacity: 0.6 }}>
-            <path d="M2 2h6v6M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            aria-hidden="true"
+            style={{ marginLeft: 4, opacity: 0.6 }}
+          >
+            <path
+              d="M2 2h6v6M8 2L2 8"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </Link>
       </nav>
@@ -224,7 +256,7 @@ function LHero() {
             setPublicCode(message.publicCode);
             setExpiresAt(message.expiresAt);
             trackEvent("session_created", undefined, { sessionId: message.sessionId });
-            trackEvent("qr_visible", undefined, { sessionId: message.sessionId });
+            trackEvent("session_qr_visible", undefined, { sessionId: message.sessionId });
             return;
           }
 
@@ -258,7 +290,7 @@ function LHero() {
             window.sessionStorage.setItem("handitoff.connectedPeerLabel", peerLabel);
             window.sessionStorage.setItem("handitoff.connectedCode", current.publicCode ?? "");
             window.sessionStorage.setItem("handitoff.role", "host");
-            trackEvent("peer_connected", undefined, { sessionId: current.sessionId });
+            trackEvent("session_peer_connected", undefined, { sessionId: current.sessionId });
             navigate(`/s/${current.publicCode ?? ""}`);
             return;
           }
@@ -358,7 +390,7 @@ function LHero() {
       deviceId: state.deviceId,
       peerDeviceId: state.pendingPeerDeviceId,
     });
-    trackEvent("peer_approved", undefined, { sessionId: state.sessionId });
+    trackEvent("session_peer_approved", undefined, { sessionId: state.sessionId });
   };
 
   const rejectPeer = () => {
@@ -375,7 +407,7 @@ function LHero() {
       deviceId: state.deviceId,
       peerDeviceId: state.pendingPeerDeviceId,
     });
-    trackEvent("peer_rejected", undefined, { sessionId: state.sessionId });
+    trackEvent("session_peer_rejected", undefined, { sessionId: state.sessionId });
   };
 
   const copyLink = useCallback(() => {
@@ -431,7 +463,13 @@ function LHero() {
                 </div>
 
                 <h2 className="l-ticket-title l-ticket-title--code">
-                  {publicCode !== "" ? publicCode : <span className="l-ticket-title-loading" aria-hidden="true">&nbsp;</span>}
+                  {publicCode !== "" ? (
+                    publicCode
+                  ) : (
+                    <span className="l-ticket-title-loading" aria-hidden="true">
+                      &nbsp;
+                    </span>
+                  )}
                 </h2>
 
                 <div className="l-ticket-from-to">
@@ -446,7 +484,10 @@ function LHero() {
                       <div className="l-ticket-ft-value">{state.pendingPeerDeviceLabel}</div>
                     ) : (
                       <div className="l-ticket-ft-value l-ticket-ft-value--muted">
-                        Awaiting scan<span className="l-blink" aria-hidden="true">_</span>
+                        Awaiting scan
+                        <span className="l-blink" aria-hidden="true">
+                          _
+                        </span>
                       </div>
                     )}
                   </div>
@@ -527,7 +568,10 @@ function StubJoinInput() {
   const [code, setCode] = useState("");
 
   const handleJoin = () => {
-    const normalized = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const normalized = code
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
     if (normalized.length >= 4) {
       navigate(`/join/${normalized}`);
     }
@@ -541,7 +585,9 @@ function StubJoinInput() {
         placeholder="Have a code? Enter it"
         value={code}
         onChange={(e) => setCode(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") handleJoin(); }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleJoin();
+        }}
         aria-label="Session code"
         maxLength={12}
         autoCapitalize="characters"
@@ -756,7 +802,9 @@ function LFaq() {
   return (
     <section className="el-section el-section--dark">
       <div className="el-container">
-        <h2 className="el-section-title" style={{ color: "#fafafa" }}>Things people ask.</h2>
+        <h2 className="el-section-title" style={{ color: "#fafafa" }}>
+          Things people ask.
+        </h2>
         <div className="el-faq-list">
           {items.map((it, i) => (
             <div key={i} className="el-faq-row">

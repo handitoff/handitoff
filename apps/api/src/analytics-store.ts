@@ -38,9 +38,13 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
     const since = rangeToInterval(range);
     const [
       summary,
-      funnel,
+      deviceEvents,
+      sessionEvents,
+      transferBatchEvents,
+      fileEvents,
       connectionTypes,
       sizeBuckets,
+      fileSizeBuckets,
       failures,
       browsers,
       operatingSystems,
@@ -48,9 +52,73 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
       recentFailedTransfers,
     ] = await Promise.all([
       this.summary(since),
-      this.countByEvent(since),
-      this.countByProperty("connectionType", since, ["connection_type_detected"]),
-      this.countByProperty("sizeBucket", since, ["transfer_started", "transfer_completed"]),
+      this.countByEvent(since, [
+        "device_page_view",
+        "device_join_page_opened",
+        "page_view",
+        "join_page_opened",
+      ]),
+      this.countDistinctByEvent(
+        since,
+        [
+          "session_created",
+          "session_qr_visible",
+          "session_join_requested",
+          "session_peer_approved",
+          "session_peer_connected",
+          "session_expired",
+          "session_ended",
+          "qr_visible",
+          "join_requested",
+          "peer_approved",
+          "peer_connected",
+        ],
+        "session_id",
+      ),
+      this.countDistinctByEvent(
+        since,
+        [
+          "transfer_batch_started",
+          "transfer_batch_completed",
+          "transfer_batch_failed",
+          "transfer_batch_cancelled",
+          "transfer_started",
+          "transfer_completed",
+          "transfer_failed",
+          "transfer_cancelled",
+        ],
+        "transfer_id",
+      ),
+      this.countByEvent(since, [
+        "transfer_file_started",
+        "transfer_file_completed",
+        "transfer_file_failed",
+        "transfer_file_cancelled",
+        "transfer_file_downloaded",
+      ]),
+      this.countDistinctByProperty(
+        "connectionType",
+        since,
+        ["transfer_batch_started", "transfer_batch_completed"],
+        "transfer_id",
+      ),
+      this.countDistinctByProperty(
+        "sizeBucket",
+        since,
+        [
+          "transfer_batch_started",
+          "transfer_batch_completed",
+          "transfer_started",
+          "transfer_completed",
+        ],
+        "transfer_id",
+      ),
+      this.countByProperty("sizeBucket", since, [
+        "transfer_file_started",
+        "transfer_file_completed",
+        "transfer_file_failed",
+        "transfer_file_downloaded",
+      ]),
       this.countFailures(since),
       this.countByProperty("browser", since),
       this.countByProperty("os", since),
@@ -61,9 +129,14 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
     return {
       range,
       summary,
-      funnel,
+      funnel: transferBatchEvents,
+      deviceEvents,
+      sessionEvents,
+      transferBatchEvents,
+      fileEvents,
       connectionTypes,
       sizeBuckets,
+      fileSizeBuckets,
       failures,
       browsers,
       operatingSystems,
@@ -86,9 +159,15 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
       counts as (
         select
           count(*) filter (where event_name = 'session_created') as sessions_created,
-          count(*) filter (where event_name = 'peer_connected') as peers_connected,
-          count(*) filter (where event_name = 'transfer_started') as transfers_started,
-          count(*) filter (where event_name = 'transfer_completed') as transfers_completed
+          count(distinct session_id) filter (
+            where event_name in ('session_peer_connected', 'peer_connected') and session_id is not null
+          ) as peers_connected,
+          count(distinct transfer_id) filter (
+            where event_name in ('transfer_batch_started', 'transfer_started') and transfer_id is not null
+          ) as transfers_started,
+          count(distinct transfer_id) filter (
+            where event_name in ('transfer_batch_completed', 'transfer_completed') and transfer_id is not null
+          ) as transfers_completed
         from events
       ),
       completed as (
@@ -97,7 +176,7 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
           avg(nullif((properties->>'durationMs')::numeric, 0)) as average_transfer_duration,
           avg(nullif((properties->>'averageMbps')::numeric, 0)) as average_mbps
         from events
-        where event_name = 'transfer_completed'
+        where event_name in ('transfer_batch_completed', 'transfer_completed')
       )
       select
         counts.sessions_created,
@@ -127,20 +206,40 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
     };
   }
 
-  private async countByEvent(since: string): Promise<Array<{ name: string; count: number }>> {
+  private async countByEvent(
+    since: string,
+    eventNames: string[],
+  ): Promise<Array<{ name: string; count: number }>> {
     const rows = await this.prisma.$queryRaw<Array<{ name: string; count: bigint }>>`
       select event_name as name, count(*) as count
       from analytics_events
       where created_at >= now() - ${since}::interval
-        and event_name in (
-          'session_created', 'join_requested', 'peer_approved',
-          'peer_connected', 'transfer_started', 'transfer_completed'
-        )
+        and event_name = any(${eventNames}::text[])
       group by event_name
-      order by array_position(array[
-        'session_created', 'join_requested', 'peer_approved',
-        'peer_connected', 'transfer_started', 'transfer_completed'
-      ], event_name)
+      order by count(*) desc
+    `;
+    return rows.map((row) => ({ name: row.name, count: Number(row.count) }));
+  }
+
+  private async countDistinctByEvent(
+    since: string,
+    eventNames: string[],
+    distinctColumn: "session_id" | "transfer_id",
+  ): Promise<Array<{ name: string; count: number }>> {
+    const rows = await this.prisma.$queryRaw<Array<{ name: string; count: bigint }>>`
+      select event_name as name,
+        count(distinct case
+          when ${distinctColumn} = 'session_id' then session_id
+          else transfer_id
+        end) as count
+      from analytics_events
+      where created_at >= now() - ${since}::interval
+        and event_name = any(${eventNames}::text[])
+      group by event_name
+      order by count(distinct case
+        when ${distinctColumn} = 'session_id' then session_id
+        else transfer_id
+      end) desc
     `;
     return rows.map((row) => ({ name: row.name, count: Number(row.count) }));
   }
@@ -165,13 +264,54 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
     return rows.map((row) => ({ name: row.name ?? "unknown", count: Number(row.count) }));
   }
 
+  private async countDistinctByProperty(
+    property: string,
+    since: string,
+    eventNames: string[],
+    distinctColumn: "session_id" | "transfer_id",
+  ): Promise<Array<{ name: string; count: number }>> {
+    const rows = await this.prisma.$queryRaw<Array<{ name: string | null; count: bigint }>>`
+      select name, count(distinct id_value) as count
+      from (
+        select
+          coalesce(properties->>${property}, 'unknown') as name,
+          case
+            when ${distinctColumn} = 'session_id' then session_id
+            else transfer_id
+          end as id_value
+        from analytics_events
+        where created_at >= now() - ${since}::interval
+          and event_name = any(${eventNames}::text[])
+      ) property_counts
+      where id_value is not null
+      group by name
+      order by count(distinct id_value) desc
+      limit 12
+    `;
+    return rows.map((row) => ({ name: row.name ?? "unknown", count: Number(row.count) }));
+  }
+
   private async countFailures(since: string): Promise<Array<{ name: string; count: number }>> {
     const rows = await this.prisma.$queryRaw<Array<{ name: string | null; count: bigint }>>`
-      select coalesce(properties->>'failureCode', event_name) as name, count(*) as count
+      select
+        concat(
+          coalesce(properties->>'failureStage', properties->>'errorStage', 'unknown'),
+          ': ',
+          coalesce(properties->>'failureCode', event_name)
+        ) as name,
+        count(*) as count
       from analytics_events
       where created_at >= now() - ${since}::interval
-        and event_name in ('peer_connection_failed', 'transfer_failed')
-      group by coalesce(properties->>'failureCode', event_name)
+        and event_name in (
+          'session_connection_failed', 'peer_connection_failed',
+          'transfer_batch_failed', 'transfer_failed',
+          'transfer_file_failed'
+        )
+      group by concat(
+        coalesce(properties->>'failureStage', properties->>'errorStage', 'unknown'),
+        ': ',
+        coalesce(properties->>'failureCode', event_name)
+      )
       order by count(*) desc
       limit 12
     `;
@@ -185,7 +325,7 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
         session_id as "sessionId",
         transfer_id as "transferId",
         properties->>'failureCode' as "failureCode",
-        properties->>'errorStage' as "errorStage",
+        coalesce(properties->>'failureStage', properties->>'errorStage') as "failureStage",
         properties->>'browser' as browser,
         properties->>'os' as os,
         properties->>'deviceType' as "deviceType",
@@ -193,7 +333,7 @@ export class PrismaAnalyticsStore implements AnalyticsDashboardStore {
         properties->>'connectionType' as "connectionType"
       from analytics_events
       where created_at >= now() - ${since}::interval
-        and event_name = 'transfer_failed'
+        and event_name in ('transfer_batch_failed', 'transfer_failed', 'transfer_file_failed')
       order by created_at desc
       limit 20
     `;

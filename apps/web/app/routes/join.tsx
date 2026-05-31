@@ -30,7 +30,7 @@ export default function Join({ params }: Route.ComponentProps) {
     const identity = getBrowserDeviceIdentity();
     const initialConfig = loadPublicRuntimeConfig();
     const api = new HanditoffApiClient({ baseUrl: initialConfig.apiUrl });
-    trackEvent("join_page_opened");
+    trackEvent("device_join_page_opened");
 
     dispatch({
       type: "session:join-start",
@@ -58,7 +58,7 @@ export default function Join({ params }: Route.ComponentProps) {
               : { type: "socket:disconnected", reason },
           );
           if (status === "connected") {
-            trackEvent("join_requested");
+            trackEvent("session_join_requested");
             socket.send({
               type: "session:join",
               publicCode,
@@ -89,7 +89,7 @@ export default function Join({ params }: Route.ComponentProps) {
             window.sessionStorage.setItem("handitoff.connectedPeerLabel", message.peerDeviceLabel);
             window.sessionStorage.setItem("handitoff.connectedCode", publicCode);
             window.sessionStorage.setItem("handitoff.role", "guest");
-            trackEvent("peer_connected", undefined, { sessionId: message.sessionId });
+            trackEvent("session_peer_connected", undefined, { sessionId: message.sessionId });
             navigate(`/s/${publicCode}`);
             return;
           }
@@ -99,7 +99,7 @@ export default function Join({ params }: Route.ComponentProps) {
               type: "session:rejected",
               message: "The host rejected this pairing request.",
             });
-            trackEvent("peer_rejected");
+            trackEvent("session_peer_rejected");
             return;
           }
 

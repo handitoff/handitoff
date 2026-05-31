@@ -39,6 +39,15 @@ export type FileIssue =
   | "cancelled"
   | "unknown";
 
+export type TransferFailureStage =
+  | "validation"
+  | "connection"
+  | "file_read"
+  | "chunk_send"
+  | "chunk_receive"
+  | "file_assemble"
+  | "download";
+
 export const RETRYABLE_FILE_ISSUES = [
   "connection_lost",
   "peer_disconnected",
@@ -54,11 +63,16 @@ export class FileTransferError extends Error {
   public readonly issue: FileIssue;
   public readonly retryable: boolean;
   public readonly file?: Pick<File, "name" | "size" | "type">;
+  public readonly failureStage?: TransferFailureStage;
 
   public constructor(
     issue: FileIssue,
     message: string,
-    options: { retryable?: boolean; file?: Pick<File, "name" | "size" | "type"> } = {},
+    options: {
+      retryable?: boolean;
+      file?: Pick<File, "name" | "size" | "type">;
+      failureStage?: TransferFailureStage;
+    } = {},
   ) {
     super(message);
     this.name = "FileTransferError";
@@ -66,6 +80,9 @@ export class FileTransferError extends Error {
     this.retryable = options.retryable ?? isRetryableFileIssue(issue);
     if (options.file !== undefined) {
       this.file = options.file;
+    }
+    if (options.failureStage !== undefined) {
+      this.failureStage = options.failureStage;
     }
   }
 }
@@ -104,6 +121,7 @@ export type TransferProgressSnapshot = {
   name?: string;
   error?: string;
   issue?: FileIssue;
+  failureStage?: TransferFailureStage;
   retryable?: boolean;
   blob?: Blob;
   downloadUrl?: string;
@@ -212,7 +230,7 @@ export function validateFilesForTransfer(
     throw new FileTransferError(
       "too_many_files",
       `This transfer has too many files. Choose ${maxFilesPerTransfer} files or fewer.`,
-      { retryable: false },
+      { retryable: false, failureStage: "validation" },
     );
   }
 
@@ -223,7 +241,7 @@ export function validateFilesForTransfer(
       `This transfer is too large for the current limit. Choose files totaling less than ${formatFileSize(
         maxTotalTransferSizeBytes,
       )}.`,
-      { retryable: false },
+      { retryable: false, failureStage: "validation" },
     );
   }
 
@@ -234,7 +252,7 @@ export function validateFilesForTransfer(
         `This file is too large for the current limit. Remove it or choose a file smaller than ${formatFileSize(
           maxFileSizeBytes,
         )}.`,
-        { retryable: false, file },
+        { retryable: false, file, failureStage: "validation" },
       );
     }
   }
@@ -257,7 +275,7 @@ function validateFileOfferForTransfer(
     throw new FileTransferError(
       "too_many_files",
       `This transfer has too many files. Ask the sender to choose ${maxFilesPerTransfer} files or fewer.`,
-      { retryable: false },
+      { retryable: false, failureStage: "validation" },
     );
   }
 
@@ -267,7 +285,7 @@ function validateFileOfferForTransfer(
       `This transfer is too large for the current limit. Ask the sender to choose files totaling less than ${formatFileSize(
         maxTotalTransferSizeBytes,
       )}.`,
-      { retryable: false },
+      { retryable: false, failureStage: "validation" },
     );
   }
 
@@ -278,7 +296,7 @@ function validateFileOfferForTransfer(
         `This file is too large for the current limit. Ask the sender to choose a file smaller than ${formatFileSize(
           maxFileSizeBytes,
         )}.`,
-        { retryable: false },
+        { retryable: false, failureStage: "validation" },
       );
     }
   }
@@ -476,7 +494,9 @@ export class BrowserTransferController {
     const parsed = JSON.parse(data) as unknown;
     const validation = validateTransferMessage(parsed);
     if (!validation.ok) {
-      throw new Error(validation.error.message);
+      throw new FileTransferError("transfer_failed", validation.error.message, {
+        failureStage: "chunk_receive",
+      });
     }
     const message = validation.value;
     switch (message.type) {
@@ -499,7 +519,12 @@ export class BrowserTransferController {
         this.handleCancel(message);
         break;
       case "transfer:error":
-        this.emitPeerTransferError(message.transferId, message.code, message.message, message.fileId);
+        this.emitPeerTransferError(
+          message.transferId,
+          message.code,
+          message.message,
+          message.fileId,
+        );
         break;
     }
   }
@@ -534,6 +559,7 @@ export class BrowserTransferController {
         name: "Incoming transfer",
         error: normalized.message,
         issue: normalized.issue,
+        failureStage: normalized.failureStage ?? "validation",
         retryable: normalized.retryable,
       });
       return;
@@ -587,7 +613,9 @@ export class BrowserTransferController {
         this.emitOutgoingFileError(
           transfer,
           undefined,
-          new FileTransferError("transfer_failed", "File metadata is missing."),
+          new FileTransferError("transfer_failed", "File metadata is missing.", {
+            failureStage: "validation",
+          }),
         );
         continue;
       }
@@ -622,7 +650,7 @@ export class BrowserTransferController {
         `This file is too large for the current limit. Remove it or choose a file smaller than ${formatFileSize(
           transfer.maxHashableFileBytes,
         )}.`,
-        { retryable: false, file },
+        { retryable: false, file, failureStage: "validation" },
       );
     }
     const chunkCount = calculateChunkCount(file.size, transfer.chunkSizeBytes);
@@ -630,10 +658,19 @@ export class BrowserTransferController {
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
       throwIfAborted(transfer.signal);
       if (transfer.canceled) {
-        throw new FileTransferError("cancelled", "Transfer cancelled.", { retryable: false, file });
+        throw new FileTransferError("cancelled", "Transfer cancelled.", {
+          retryable: false,
+          file,
+          failureStage: "validation",
+        });
       }
       const range = getChunkRange(file.size, chunkIndex, transfer.chunkSizeBytes);
-      const plaintext = await file.slice(range.offset, range.end).arrayBuffer();
+      let plaintext: ArrayBuffer;
+      try {
+        plaintext = await file.slice(range.offset, range.end).arrayBuffer();
+      } catch (error) {
+        throw toFileTransferError(error, "file_read");
+      }
       const iv = generateAesGcmIv();
       const encrypted = await encryptAesGcm(this.options.key, plaintext, iv);
       const header: FileChunkHeaderMessage = {
@@ -646,10 +683,11 @@ export class BrowserTransferController {
         encryptedSize: encrypted.byteLength,
         iv: base64urlEncode(iv),
       };
-      this.sendJson(header);
+      this.sendJson(header, "chunk_send");
       this.sendChannelData(
         encrypted,
         `The browser data channel closed while sending ${metadata.name}. The paired device may have gone offline, locked, or changed networks.`,
+        "chunk_send",
       );
       bytesSent += plaintext.byteLength;
       this.emitProgress({
@@ -664,13 +702,22 @@ export class BrowserTransferController {
       });
       await waitForBackpressure(this.options.channel, this.options.backpressure, transfer.signal);
     }
-    const digest = base64urlEncode(await sha256(await file.arrayBuffer()));
-    this.sendJson({
-      type: "file:complete",
-      transferId: transfer.transferId,
-      fileId: metadata.fileId,
-      sha256: digest,
-    });
+    let fileBytes: ArrayBuffer;
+    try {
+      fileBytes = await file.arrayBuffer();
+    } catch (error) {
+      throw toFileTransferError(error, "file_read");
+    }
+    const digest = base64urlEncode(await sha256(fileBytes));
+    this.sendJson(
+      {
+        type: "file:complete",
+        transferId: transfer.transferId,
+        fileId: metadata.fileId,
+        sha256: digest,
+      },
+      "chunk_send",
+    );
     this.emitComplete({
       transferId: transfer.transferId,
       fileId: metadata.fileId,
@@ -687,13 +734,21 @@ export class BrowserTransferController {
     const transfer = this.incoming.get(message.transferId);
     const incoming = transfer?.files.get(message.fileId);
     if (transfer === undefined || incoming === undefined || transfer.canceled) {
-      throw new Error("Received chunk for an unknown or canceled transfer.");
+      throw new FileTransferError(
+        "transfer_failed",
+        "Received chunk for an unknown or canceled transfer.",
+        { failureStage: "chunk_receive" },
+      );
     }
     if (message.chunkIndex !== incoming.expectedChunkIndex) {
-      throw new Error("Received file chunks out of order.");
+      throw new FileTransferError("transfer_failed", "Received file chunks out of order.", {
+        failureStage: "chunk_receive",
+      });
     }
     if (message.offset !== incoming.receivedBytes) {
-      throw new Error("Received file chunk at the wrong offset.");
+      throw new FileTransferError("transfer_failed", "Received file chunk at the wrong offset.", {
+        failureStage: "chunk_receive",
+      });
     }
     incoming.pendingHeader = message;
   }
@@ -701,19 +756,40 @@ export class BrowserTransferController {
   private async handleBinaryMessage(data: ArrayBuffer): Promise<void> {
     const pending = findPendingIncomingFile(this.incoming);
     if (pending === undefined) {
-      throw new Error("Received binary data without a chunk header.");
+      throw new FileTransferError(
+        "transfer_failed",
+        "Received binary data without a chunk header.",
+        { failureStage: "chunk_receive" },
+      );
     }
     const { transfer, file } = pending;
     const header = file.pendingHeader;
     if (header === undefined) {
-      throw new Error("Received binary data without a chunk header.");
+      throw new FileTransferError(
+        "transfer_failed",
+        "Received binary data without a chunk header.",
+        { failureStage: "chunk_receive" },
+      );
     }
     if (data.byteLength !== header.encryptedSize) {
-      throw new Error("Encrypted chunk size does not match its header.");
+      throw new FileTransferError(
+        "transfer_failed",
+        "Encrypted chunk size does not match its header.",
+        { failureStage: "chunk_receive" },
+      );
     }
-    const plaintext = await decryptAesGcm(this.options.key, data, base64urlDecode(header.iv));
+    let plaintext: ArrayBuffer;
+    try {
+      plaintext = await decryptAesGcm(this.options.key, data, base64urlDecode(header.iv));
+    } catch (error) {
+      throw toFileTransferError(error, "chunk_receive");
+    }
     if (plaintext.byteLength !== header.plaintextSize) {
-      throw new Error("Plaintext chunk size does not match its header.");
+      throw new FileTransferError(
+        "transfer_failed",
+        "Plaintext chunk size does not match its header.",
+        { failureStage: "chunk_receive" },
+      );
     }
     delete file.pendingHeader;
     file.expectedChunkIndex += 1;
@@ -736,19 +812,42 @@ export class BrowserTransferController {
     const transfer = this.incoming.get(message.transferId);
     const file = transfer?.files.get(message.fileId);
     if (transfer === undefined || file === undefined) {
-      throw new Error("Received completion for an unknown file.");
+      throw new FileTransferError("transfer_failed", "Received completion for an unknown file.", {
+        failureStage: "file_assemble",
+      });
     }
     if (file.receivedBytes !== file.metadata.size) {
-      throw new Error("Received file completed before all bytes arrived.");
+      throw new FileTransferError(
+        "transfer_failed",
+        "Received file completed before all bytes arrived.",
+        { failureStage: "file_assemble" },
+      );
     }
-    const blob = new Blob(file.chunks, { type: file.metadata.mimeType });
-    const digest = base64urlEncode(await sha256(await blob.arrayBuffer()));
+    let blob: Blob;
+    let digest: string;
+    try {
+      blob = new Blob(file.chunks, { type: file.metadata.mimeType });
+      digest = base64urlEncode(await sha256(await blob.arrayBuffer()));
+    } catch (error) {
+      file.status = "failed";
+      throw toFileTransferError(error, "file_assemble");
+    }
     if (digest !== message.sha256) {
       file.status = "failed";
-      throw new Error("Received file failed integrity verification.");
+      throw new FileTransferError(
+        "transfer_failed",
+        "Received file failed integrity verification.",
+        { failureStage: "file_assemble" },
+      );
     }
     file.status = "complete";
-    const downloadUrl = this.options.createObjectUrl?.(blob);
+    let downloadUrl: string | undefined;
+    try {
+      downloadUrl = this.options.createObjectUrl?.(blob);
+    } catch (error) {
+      file.status = "failed";
+      throw toFileTransferError(error, "download");
+    }
     this.emitComplete({
       transferId: message.transferId,
       fileId: message.fileId,
@@ -776,7 +875,9 @@ export class BrowserTransferController {
       message.fileId === undefined
         ? [
             ...(outgoing?.metadata ?? []),
-            ...(incoming === undefined ? [] : Array.from(incoming.files.values()).map((file) => file.metadata)),
+            ...(incoming === undefined
+              ? []
+              : Array.from(incoming.files.values()).map((file) => file.metadata)),
           ]
         : [
             outgoing?.metadata.find((file) => file.fileId === message.fileId),
@@ -831,16 +932,21 @@ export class BrowserTransferController {
     }
   }
 
-  private sendJson(message: TransferMessage): void {
+  private sendJson(
+    message: TransferMessage,
+    failureStage: TransferFailureStage = "connection",
+  ): void {
     this.sendChannelData(
       JSON.stringify(message),
       "The browser data channel closed while sending transfer metadata.",
+      failureStage,
     );
   }
 
   private sendChannelData(
     data: string | ArrayBuffer | ArrayBufferView<ArrayBufferLike>,
     failureMessage: string,
+    failureStage: TransferFailureStage,
   ): void {
     try {
       this.options.channel.send(data);
@@ -850,10 +956,10 @@ export class BrowserTransferController {
         error instanceof DOMException &&
         error.name === "InvalidStateError"
       ) {
-        throw new Error(failureMessage);
+        throw new FileTransferError("connection_lost", failureMessage, { failureStage });
       }
       if (error instanceof Error && /closed|closing|not open|invalidstate/i.test(error.message)) {
-        throw new Error(failureMessage);
+        throw new FileTransferError("connection_lost", failureMessage, { failureStage });
       }
       throw error;
     }
@@ -890,6 +996,7 @@ export class BrowserTransferController {
       error: error.message,
       issue: error.issue,
       retryable: error.retryable,
+      ...(error.failureStage === undefined ? {} : { failureStage: error.failureStage }),
       ...(metadata === undefined
         ? {}
         : {
@@ -919,6 +1026,7 @@ export class BrowserTransferController {
       error: normalized.message,
       issue: normalized.issue,
       retryable: normalized.retryable,
+      ...(normalized.failureStage === undefined ? {} : { failureStage: normalized.failureStage }),
     });
   }
 
@@ -949,6 +1057,7 @@ export class BrowserTransferController {
         name: file.metadata.name,
         error: message,
         issue: normalizeFileIssueCode(code),
+        failureStage: issueToFailureStage(normalizeFileIssueCode(code)),
         retryable: isRetryableFileIssue(normalizeFileIssueCode(code)),
       });
     }
@@ -1011,7 +1120,10 @@ function normalizeTransferError(error: unknown): string {
   return "Transfer failed while reading data from the paired browser.";
 }
 
-function toFileTransferError(error: unknown): FileTransferError {
+function toFileTransferError(
+  error: unknown,
+  fallbackFailureStage?: TransferFailureStage,
+): FileTransferError {
   if (error instanceof FileTransferError) {
     return error;
   }
@@ -1021,18 +1133,49 @@ function toFileTransferError(error: unknown): FileTransferError {
     error instanceof DOMException &&
     error.name === "AbortError"
   ) {
-    return new FileTransferError("cancelled", "Transfer cancelled.", { retryable: false });
+    return new FileTransferError("cancelled", "Transfer cancelled.", {
+      retryable: false,
+      ...(fallbackFailureStage === undefined ? {} : { failureStage: fallbackFailureStage }),
+    });
   }
   if (/closed|offline|locked|changed networks|connection|data channel/i.test(message)) {
-    return new FileTransferError("connection_lost", message);
+    return new FileTransferError("connection_lost", message, {
+      failureStage: fallbackFailureStage ?? "connection",
+    });
   }
   if (/peer|paired device/i.test(message)) {
-    return new FileTransferError("peer_disconnected", message);
+    return new FileTransferError("peer_disconnected", message, {
+      failureStage: fallbackFailureStage ?? "connection",
+    });
   }
   if (/too large|limit/i.test(message)) {
-    return new FileTransferError("file_too_large", message, { retryable: false });
+    return new FileTransferError("file_too_large", message, {
+      retryable: false,
+      failureStage: fallbackFailureStage ?? "validation",
+    });
   }
-  return new FileTransferError("transfer_failed", message);
+  return new FileTransferError(
+    "transfer_failed",
+    message,
+    fallbackFailureStage === undefined ? {} : { failureStage: fallbackFailureStage },
+  );
+}
+
+function issueToFailureStage(issue: FileIssue): TransferFailureStage {
+  if (issue === "connection_lost" || issue === "peer_disconnected") {
+    return "connection";
+  }
+  if (
+    issue === "file_too_large" ||
+    issue === "too_many_files" ||
+    issue === "transfer_too_large" ||
+    issue === "unsupported_file" ||
+    issue === "browser_limit" ||
+    issue === "cancelled"
+  ) {
+    return "validation";
+  }
+  return "file_assemble";
 }
 
 function normalizeFileIssueCode(codeOrMessage: string): FileIssue {

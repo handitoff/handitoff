@@ -46,6 +46,9 @@ type TransferAnalyticsState = {
   startedAt: number;
   completed: boolean;
   failed: boolean;
+  startedFileIds: Set<string>;
+  completedFileIds: Set<string>;
+  failedFileIds: Set<string>;
 };
 
 type PendingIncomingOffer = {
@@ -215,50 +218,87 @@ export default function Session({ params }: Route.ComponentProps) {
     [sendPeerControl, sendSignal],
   );
 
-  const snapshotToTransferItem = useCallback(
-    (snapshot: TransferProgressSnapshot) => {
-      const id = `${snapshot.transferId}:${snapshot.fileId ?? "transfer"}`;
+  const snapshotToTransferItem = useCallback((snapshot: TransferProgressSnapshot) => {
+    const id = `${snapshot.transferId}:${snapshot.fileId ?? "transfer"}`;
 
-      // Update speed samples
-      if (snapshot.status === "transferring" && snapshot.bytesTransferred > 0) {
-        const samples = speedSamplesRef.current.get(id) ?? [];
-        samples.push({ time: Date.now(), bytes: snapshot.bytesTransferred });
-        // Keep last 8 seconds of samples
-        const cutoff = Date.now() - 8000;
-        speedSamplesRef.current.set(id, samples.filter((s) => s.time >= cutoff));
-      }
+    // Update speed samples
+    if (snapshot.status === "transferring" && snapshot.bytesTransferred > 0) {
+      const samples = speedSamplesRef.current.get(id) ?? [];
+      samples.push({ time: Date.now(), bytes: snapshot.bytesTransferred });
+      // Keep last 8 seconds of samples
+      const cutoff = Date.now() - 8000;
+      speedSamplesRef.current.set(
+        id,
+        samples.filter((s) => s.time >= cutoff),
+      );
+    }
 
-      dispatch({
-        type: "transfer:upsert",
-        item: {
-          id,
-          name: snapshot.name ?? "Transfer",
-          size: snapshot.totalBytes,
-          progress: snapshot.progress,
-          direction: snapshot.direction,
-          ...(snapshot.fileId === undefined ? {} : { fileId: snapshot.fileId }),
-          status: snapshot.status,
-          ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
-          ...(snapshot.downloadUrl === undefined ? {} : { downloadUrl: snapshot.downloadUrl }),
-          ...(snapshot.issue === undefined ? {} : { issue: snapshot.issue }),
-          retryable: snapshot.retryable ?? false,
-          bytesTransferred: snapshot.bytesTransferred,
-        },
-      });
-    },
-    [],
-  );
+    dispatch({
+      type: "transfer:upsert",
+      item: {
+        id,
+        name: snapshot.name ?? "Transfer",
+        size: snapshot.totalBytes,
+        progress: snapshot.progress,
+        direction: snapshot.direction,
+        ...(snapshot.fileId === undefined ? {} : { fileId: snapshot.fileId }),
+        status: snapshot.status,
+        ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
+        ...(snapshot.downloadUrl === undefined ? {} : { downloadUrl: snapshot.downloadUrl }),
+        ...(snapshot.issue === undefined ? {} : { issue: snapshot.issue }),
+        retryable: snapshot.retryable ?? false,
+        bytesTransferred: snapshot.bytesTransferred,
+      },
+    });
+  }, []);
 
   const getAnalyticsContext = useCallback(() => {
     const current = stateRef.current;
     return current.sessionId === undefined ? {} : { sessionId: current.sessionId };
   }, []);
 
+  const trackTransferFileStarted = useCallback(
+    (snapshot: TransferProgressSnapshot) => {
+      if (snapshot.fileId === undefined || snapshot.status !== "transferring") {
+        return;
+      }
+      const transfer = transferAnalyticsRef.current.get(snapshot.transferId);
+      if (transfer === undefined || transfer.startedFileIds.has(snapshot.fileId)) {
+        return;
+      }
+      transfer.startedFileIds.add(snapshot.fileId);
+      trackEvent(
+        "transfer_file_started",
+        {
+          totalBytes: snapshot.totalBytes,
+          sizeBucket: sizeBucketForBytes(snapshot.totalBytes),
+          direction: snapshot.direction,
+          connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+        },
+        { ...getAnalyticsContext(), transferId: snapshot.transferId },
+      );
+    },
+    [getAnalyticsContext],
+  );
+
   const trackTransferCompleted = useCallback(
     (snapshot: TransferProgressSnapshot) => {
       const transfer = transferAnalyticsRef.current.get(snapshot.transferId);
       if (transfer === undefined || transfer.completed || transfer.failed) {
         return;
+      }
+      if (snapshot.fileId !== undefined && !transfer.completedFileIds.has(snapshot.fileId)) {
+        transfer.completedFileIds.add(snapshot.fileId);
+        trackEvent(
+          "transfer_file_completed",
+          {
+            totalBytes: snapshot.totalBytes,
+            sizeBucket: sizeBucketForBytes(snapshot.totalBytes),
+            direction: snapshot.direction,
+            connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+          },
+          { ...getAnalyticsContext(), transferId: snapshot.transferId },
+        );
       }
       transfer.completedBytes += snapshot.totalBytes;
       if (transfer.completedBytes < transfer.totalBytes) {
@@ -268,7 +308,7 @@ export default function Session({ params }: Route.ComponentProps) {
       const durationMs = Math.max(1, Date.now() - transfer.startedAt);
       const averageMbps = (transfer.totalBytes * 8) / durationMs / 1000;
       trackEvent(
-        "transfer_completed",
+        "transfer_batch_completed",
         {
           fileCount: transfer.fileCount,
           totalBytes: transfer.totalBytes,
@@ -286,6 +326,28 @@ export default function Session({ params }: Route.ComponentProps) {
   const trackTransferFailed = useCallback(
     (snapshot: TransferProgressSnapshot) => {
       const transfer = transferAnalyticsRef.current.get(snapshot.transferId);
+      const failureCode =
+        snapshot.status === "canceled" ? "cancelled" : (snapshot.issue ?? "transfer_failed");
+      const failureStage = snapshot.failureStage ?? failureStageForIssue(failureCode);
+      if (
+        transfer !== undefined &&
+        snapshot.fileId !== undefined &&
+        !transfer.failedFileIds.has(snapshot.fileId)
+      ) {
+        transfer.failedFileIds.add(snapshot.fileId);
+        trackEvent(
+          snapshot.status === "canceled" ? "transfer_file_cancelled" : "transfer_file_failed",
+          {
+            totalBytes: snapshot.totalBytes,
+            sizeBucket: sizeBucketForBytes(snapshot.totalBytes),
+            direction: snapshot.direction,
+            connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+            failureCode,
+            failureStage,
+          },
+          { ...getAnalyticsContext(), transferId: snapshot.transferId },
+        );
+      }
       if (transfer !== undefined) {
         if (transfer.failed || transfer.completed) {
           return;
@@ -293,14 +355,14 @@ export default function Session({ params }: Route.ComponentProps) {
         transfer.failed = true;
       }
       trackEvent(
-        snapshot.status === "canceled" ? "transfer_cancelled" : "transfer_failed",
+        snapshot.status === "canceled" ? "transfer_batch_cancelled" : "transfer_batch_failed",
         {
           fileCount: transfer?.fileCount ?? 1,
           totalBytes: transfer?.totalBytes ?? snapshot.totalBytes,
           sizeBucket: sizeBucketForBytes(transfer?.totalBytes ?? snapshot.totalBytes),
           connectionType: toAnalyticsConnectionType(networkTypeRef.current),
-          failureCode: snapshot.status === "canceled" ? "cancelled" : "transfer_failed",
-          errorStage: snapshot.direction,
+          failureCode,
+          failureStage,
         },
         { ...getAnalyticsContext(), transferId: snapshot.transferId },
       );
@@ -308,34 +370,31 @@ export default function Session({ params }: Route.ComponentProps) {
     [getAnalyticsContext],
   );
 
-  const triggerErrorReport = useCallback(
-    (snapshot: TransferProgressSnapshot) => {
-      if (
-        snapshot.status === "canceled" ||
-        snapshot.issue === "file_too_large" ||
-        snapshot.issue === "too_many_files" ||
-        snapshot.issue === "transfer_too_large" ||
-        snapshot.issue === "unsupported_file" ||
-        snapshot.issue === "browser_limit"
-      ) {
-        return;
-      }
-      const transfer = transferAnalyticsRef.current.get(snapshot.transferId);
-      const durationMs = transfer !== undefined ? Date.now() - transfer.startedAt : undefined;
-      const current = stateRef.current;
-      setErrorReport({
-        sessionId: current.sessionId,
-        errorCode: snapshot.issue ?? "transfer_failed",
-        connectionType: toAnalyticsConnectionType(networkTypeRef.current),
-        browser: inferBrowser(navigator.userAgent),
-        os: inferOs(navigator.userAgent),
-        sessionState: current.connection,
-        sizeBucket: sizeBucketForBytes(snapshot.totalBytes),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-      });
-    },
-    [],
-  );
+  const triggerErrorReport = useCallback((snapshot: TransferProgressSnapshot) => {
+    if (
+      snapshot.status === "canceled" ||
+      snapshot.issue === "file_too_large" ||
+      snapshot.issue === "too_many_files" ||
+      snapshot.issue === "transfer_too_large" ||
+      snapshot.issue === "unsupported_file" ||
+      snapshot.issue === "browser_limit"
+    ) {
+      return;
+    }
+    const transfer = transferAnalyticsRef.current.get(snapshot.transferId);
+    const durationMs = transfer !== undefined ? Date.now() - transfer.startedAt : undefined;
+    const current = stateRef.current;
+    setErrorReport({
+      sessionId: current.sessionId,
+      errorCode: snapshot.issue ?? "transfer_failed",
+      connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+      browser: inferBrowser(navigator.userAgent),
+      os: inferOs(navigator.userAgent),
+      sessionState: current.connection,
+      sizeBucket: sizeBucketForBytes(snapshot.totalBytes),
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    });
+  }, []);
 
   const ensureTransferController = useCallback(() => {
     if (transferRef.current !== undefined || aesKeyRef.current === undefined) {
@@ -380,18 +439,27 @@ export default function Session({ params }: Route.ComponentProps) {
                 bytesTransferred: 0,
               },
             });
+            trackEvent(
+              "transfer_batch_failed",
+              {
+                fileCount: offer.files.length,
+                totalBytes: offer.totalSize,
+                sizeBucket: sizeBucketForBytes(offer.totalSize),
+                direction: "incoming",
+                connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+                failureCode: "transfer_too_large",
+                failureStage: "validation",
+              },
+              { ...getAnalyticsContext(), transferId: offer.transferId },
+            );
             return false;
           }
-          transferAnalyticsRef.current.set(offer.transferId, {
-            fileCount: offer.files.length,
-            totalBytes: offer.totalSize,
-            completedBytes: 0,
-            startedAt: Date.now(),
-            completed: false,
-            failed: false,
-          });
+          transferAnalyticsRef.current.set(
+            offer.transferId,
+            createTransferAnalyticsState(offer.files.length, offer.totalSize),
+          );
           trackEvent(
-            "transfer_started",
+            "transfer_batch_started",
             {
               fileCount: offer.files.length,
               totalBytes: offer.totalSize,
@@ -416,7 +484,10 @@ export default function Session({ params }: Route.ComponentProps) {
             });
           });
         },
-        onProgress: snapshotToTransferItem,
+        onProgress: (snapshot) => {
+          trackTransferFileStarted(snapshot);
+          snapshotToTransferItem(snapshot);
+        },
         onComplete: (snapshot) => {
           snapshotToTransferItem(snapshot);
           trackTransferCompleted(snapshot);
@@ -429,7 +500,14 @@ export default function Session({ params }: Route.ComponentProps) {
       },
     });
     return transferRef.current;
-  }, [getAnalyticsContext, snapshotToTransferItem, trackTransferCompleted, trackTransferFailed, triggerErrorReport]);
+  }, [
+    getAnalyticsContext,
+    snapshotToTransferItem,
+    trackTransferCompleted,
+    trackTransferFailed,
+    trackTransferFileStarted,
+    triggerErrorReport,
+  ]);
 
   const completeCryptoExchange = useCallback(
     async (peerPublicKey: JsonWebKey) => {
@@ -508,7 +586,7 @@ export default function Session({ params }: Route.ComponentProps) {
         (event.state === "connected" || event.state === "completed")
       ) {
         dispatch({ type: "webrtc:connected" });
-        trackEvent("peer_connected", undefined, getAnalyticsContext());
+        trackEvent("session_peer_connected", undefined, getAnalyticsContext());
         return;
       }
       if (event.type === "data-channel-open") {
@@ -597,7 +675,7 @@ export default function Session({ params }: Route.ComponentProps) {
         setNetworkType(event.networkType);
         networkTypeRef.current = event.networkType;
         trackEvent(
-          "connection_type_detected",
+          "session_connection_type_detected",
           {
             connectionType: toAnalyticsConnectionType(event.networkType),
             localCandidateType: event.localCandidateType,
@@ -613,8 +691,8 @@ export default function Session({ params }: Route.ComponentProps) {
         }
         dispatch({ type: "webrtc:failed", message: event.message });
         trackEvent(
-          "peer_connection_failed",
-          { failureCode: "webrtc_failed", errorStage: "webrtc" },
+          "session_connection_failed",
+          { failureCode: "webrtc_failed", failureStage: "connection" },
           getAnalyticsContext(),
         );
       }
@@ -828,8 +906,7 @@ export default function Session({ params }: Route.ComponentProps) {
   const allTransfers = [...state.transfer.outgoing, ...state.transfer.incoming];
 
   const hasAnyFailed = allTransfers.some(
-    (i) =>
-      i.status === "failed" || i.status === "canceled" || i.status === "rejected",
+    (i) => i.status === "failed" || i.status === "canceled" || i.status === "rejected",
   );
   const hasAnyCompleted = allTransfers.some((i) => i.status === "complete");
   const hasActiveTransfers = hasActiveTransfer(state.transfer);
@@ -855,7 +932,10 @@ export default function Session({ params }: Route.ComponentProps) {
   }, [localLimitReached, peerLimitReached, state.dataChannel, sendPeerControl]);
 
   const canSendFiles =
-    state.dataChannel === "open" && state.crypto === "ready" && !isSessionExpired && !localLimitReached;
+    state.dataChannel === "open" &&
+    state.crypto === "ready" &&
+    !isSessionExpired &&
+    !localLimitReached;
   const connectionLabel = getConnectionLabel(state, canSendFiles, hasChannelIssue, networkType);
   const channelFootnote = getChannelFootnote(state, canSendFiles, hasChannelIssue);
 
@@ -888,12 +968,25 @@ export default function Session({ params }: Route.ComponentProps) {
           status: "failed",
           issue: "too_many_files",
           retryable: false,
-          error: remaining <= 0
-            ? `Session is full (${maxFilesPerTransfer} file limit).`
-            : `Only ${remaining} slot${remaining === 1 ? "" : "s"} left (${maxFilesPerTransfer} file limit).`,
+          error:
+            remaining <= 0
+              ? `Session is full (${maxFilesPerTransfer} file limit).`
+              : `Only ${remaining} slot${remaining === 1 ? "" : "s"} left (${maxFilesPerTransfer} file limit).`,
           bytesTransferred: 0,
         },
       });
+      trackEvent(
+        "transfer_batch_failed",
+        {
+          fileCount: selected.length,
+          totalBytes: totalSelectedBytes,
+          sizeBucket: sizeBucketForBytes(totalSelectedBytes),
+          connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+          failureCode: "too_many_files",
+          failureStage: "validation",
+        },
+        getAnalyticsContext(),
+      );
       return;
     }
 
@@ -917,6 +1010,18 @@ export default function Session({ params }: Route.ComponentProps) {
             bytesTransferred: 0,
           },
         });
+        trackEvent(
+          "transfer_file_failed",
+          {
+            totalBytes: file.size,
+            sizeBucket: sizeBucketForBytes(file.size),
+            direction: "outgoing",
+            connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+            failureCode: "file_too_large",
+            failureStage: "validation",
+          },
+          getAnalyticsContext(),
+        );
       } else {
         validFiles.push(file);
       }
@@ -941,6 +1046,18 @@ export default function Session({ params }: Route.ComponentProps) {
           bytesTransferred: 0,
         },
       });
+      trackEvent(
+        "transfer_batch_failed",
+        {
+          fileCount: validFiles.length,
+          totalBytes: validTotalBytes,
+          sizeBucket: sizeBucketForBytes(validTotalBytes),
+          connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+          failureCode: "transfer_too_large",
+          failureStage: "validation",
+        },
+        getAnalyticsContext(),
+      );
       return;
     }
 
@@ -973,16 +1090,12 @@ export default function Session({ params }: Route.ComponentProps) {
       });
       const totalBytes = validFiles.reduce((total, file) => total + file.size, 0);
       reservedSessionTransferBytesRef.current += totalBytes;
-      transferAnalyticsRef.current.set(transferId, {
-        fileCount: validFiles.length,
-        totalBytes,
-        completedBytes: 0,
-        startedAt: Date.now(),
-        completed: false,
-        failed: false,
-      });
+      transferAnalyticsRef.current.set(
+        transferId,
+        createTransferAnalyticsState(validFiles.length, totalBytes),
+      );
       trackEvent(
-        "transfer_started",
+        "transfer_batch_started",
         {
           fileCount: validFiles.length,
           totalBytes,
@@ -997,8 +1110,8 @@ export default function Session({ params }: Route.ComponentProps) {
         message: error instanceof Error ? error.message : "Could not start file transfer.",
       });
       trackEvent(
-        "transfer_failed",
-        { failureCode: "start_failed", errorStage: "start" },
+        "transfer_batch_failed",
+        { failureCode: "start_failed", failureStage: "validation" },
         getAnalyticsContext(),
       );
     }
@@ -1010,11 +1123,11 @@ export default function Session({ params }: Route.ComponentProps) {
     const transferId = id.split(":")[0] ?? id;
     transferRef.current?.cancelTransfer(transferId, fileId);
     trackEvent(
-      "transfer_cancelled",
+      "transfer_batch_cancelled",
       {
         connectionType: toAnalyticsConnectionType(networkTypeRef.current),
         failureCode: "cancelled",
-        errorStage: "user",
+        failureStage: "validation",
       },
       { ...getAnalyticsContext(), transferId },
     );
@@ -1027,11 +1140,11 @@ export default function Session({ params }: Route.ComponentProps) {
       transferRef.current?.cancelTransfer(transferId);
     }
     trackEvent(
-      "transfer_cancelled",
+      "transfer_batch_cancelled",
       {
         connectionType: toAnalyticsConnectionType(networkTypeRef.current),
         failureCode: "cancelled_all",
-        errorStage: "user",
+        failureStage: "validation",
       },
       getAnalyticsContext(),
     );
@@ -1053,6 +1166,27 @@ export default function Session({ params }: Route.ComponentProps) {
   const removeFailedItems = () => {
     dispatch({ type: "transfer:remove-failed" });
   };
+
+  const markDownloaded = useCallback(
+    (item: TransferItem) => {
+      if (downloadedIds.has(item.id)) {
+        return;
+      }
+      setDownloadedIds((prev) => new Set([...prev, item.id]));
+      const transferId = item.id.split(":")[0] ?? item.id;
+      trackEvent(
+        "transfer_file_downloaded",
+        {
+          totalBytes: item.size,
+          sizeBucket: sizeBucketForBytes(item.size),
+          direction: item.direction,
+          connectionType: toAnalyticsConnectionType(networkTypeRef.current),
+        },
+        { ...getAnalyticsContext(), transferId },
+      );
+    },
+    [downloadedIds, getAnalyticsContext],
+  );
 
   const clearAllItems = () => {
     dispatch({ type: "transfer:clear" });
@@ -1128,7 +1262,12 @@ export default function Session({ params }: Route.ComponentProps) {
           name={lightbox.name}
           downloadUrl={lightbox.downloadUrl}
           downloaded={downloadedIds.has(lightbox.itemId)}
-          onDownload={() => setDownloadedIds((prev) => new Set([...prev, lightbox.itemId]))}
+          onDownload={() => {
+            const item = allTransfers.find((candidate) => candidate.id === lightbox.itemId);
+            if (item !== undefined) {
+              markDownloaded(item);
+            }
+          }}
           onClose={() => setLightbox(null)}
         />
       ) : null}
@@ -1180,7 +1319,9 @@ export default function Session({ params }: Route.ComponentProps) {
             <DeviceIcon label={peerLabel} ready={canSendFiles} />
             <div className="xfer-device-info">
               <span className="xfer-device-name">{peerLabel}</span>
-              <span className={`xfer-device-status${canSendFiles ? " xfer-device-status--ok" : ""}`}>
+              <span
+                className={`xfer-device-status${canSendFiles ? " xfer-device-status--ok" : ""}`}
+              >
                 {connectionLabel}
               </span>
             </div>
@@ -1234,10 +1375,7 @@ export default function Session({ params }: Route.ComponentProps) {
               </button>
               {menuOpen ? (
                 <>
-                  <div
-                    className="xfer-topbar-menu-backdrop"
-                    onClick={() => setMenuOpen(false)}
-                  />
+                  <div className="xfer-topbar-menu-backdrop" onClick={() => setMenuOpen(false)} />
                   <div className="xfer-topbar-menu-dropdown" role="menu">
                     <span className="xfer-topbar-menu-code">{params.code.toUpperCase()}</span>
                     <button
@@ -1292,59 +1430,47 @@ export default function Session({ params }: Route.ComponentProps) {
 
         {/* Bulk action bar */}
         <div className="xfer-bulk-bar">
-            <span className="xfer-bulk-count">
-              {allTransfers.length === 0
-                ? "No files"
-                : allTransfers.length === 1
-                  ? "1 file"
-                  : `${allTransfers.length} files`}
-            </span>
-            <div className="xfer-bulk-actions">
-              {hasActiveTransfers ? (
-                <button
-                  className="xfer-bulk-btn"
-                  type="button"
-                  onClick={cancelAllTransfers}
-                >
-                  Cancel all
-                </button>
-              ) : null}
-              {hasAnyFailed ? (
-                <button
-                  className="xfer-bulk-btn"
-                  type="button"
-                  onClick={removeFailedItems}
-                >
-                  Clear failed
-                </button>
-              ) : null}
-              {hasAnyCompleted ? (
-                <button
-                  className="xfer-bulk-btn"
-                  type="button"
-                  onClick={() => {
-                    // Remove only completed items
-                    for (const item of allTransfers) {
-                      if (item.status === "complete") {
-                        dispatch({ type: "transfer:remove", id: item.id });
-                      }
+          <span className="xfer-bulk-count">
+            {allTransfers.length === 0
+              ? "No files"
+              : allTransfers.length === 1
+                ? "1 file"
+                : `${allTransfers.length} files`}
+          </span>
+          <div className="xfer-bulk-actions">
+            {hasActiveTransfers ? (
+              <button className="xfer-bulk-btn" type="button" onClick={cancelAllTransfers}>
+                Cancel all
+              </button>
+            ) : null}
+            {hasAnyFailed ? (
+              <button className="xfer-bulk-btn" type="button" onClick={removeFailedItems}>
+                Clear failed
+              </button>
+            ) : null}
+            {hasAnyCompleted ? (
+              <button
+                className="xfer-bulk-btn"
+                type="button"
+                onClick={() => {
+                  // Remove only completed items
+                  for (const item of allTransfers) {
+                    if (item.status === "complete") {
+                      dispatch({ type: "transfer:remove", id: item.id });
                     }
-                  }}
-                >
-                  Clear completed
-                </button>
-              ) : null}
-              {allDoneOrFailed && allTransfers.length > 0 ? (
-                <button
-                  className="xfer-bulk-btn"
-                  type="button"
-                  onClick={clearAllItems}
-                >
-                  Clear all
-                </button>
-              ) : null}
-            </div>
+                  }
+                }}
+              >
+                Clear completed
+              </button>
+            ) : null}
+            {allDoneOrFailed && allTransfers.length > 0 ? (
+              <button className="xfer-bulk-btn" type="button" onClick={clearAllItems}>
+                Clear all
+              </button>
+            ) : null}
           </div>
+        </div>
 
         <div className="xfer-pool">
           {allTransfers.length === 0 ? (
@@ -1368,7 +1494,12 @@ export default function Session({ params }: Route.ComponentProps) {
                       : channelFootnote}
               </p>
               {isSessionExpired ? (
-                <button className="button" type="button" style={{ marginTop: 16 }} onClick={() => navigate("/")}>
+                <button
+                  className="button"
+                  type="button"
+                  style={{ marginTop: 16 }}
+                  onClick={() => navigate("/")}
+                >
                   Start new session
                 </button>
               ) : null}
@@ -1387,7 +1518,7 @@ export default function Session({ params }: Route.ComponentProps) {
                     peerLabel={peerLabel}
                     previewUrl={previewUrl}
                     downloaded={downloadedIds.has(item.id)}
-                    onDownload={() => setDownloadedIds((prev) => new Set([...prev, item.id]))}
+                    onDownload={() => markDownloaded(item)}
                     onOpenLightbox={() =>
                       setLightbox({
                         previewUrl,
@@ -1435,7 +1566,11 @@ export default function Session({ params }: Route.ComponentProps) {
                   : "Connecting…"}
           </button>
           {hasAnyFailed ? (
-            <button className="button secondary xfer-sendbar-clear" type="button" onClick={removeFailedItems}>
+            <button
+              className="button secondary xfer-sendbar-clear"
+              type="button"
+              onClick={removeFailedItems}
+            >
               Clear failed
             </button>
           ) : null}
@@ -1458,14 +1593,21 @@ export default function Session({ params }: Route.ComponentProps) {
   );
 }
 
-function getFileType(name: string): "image" | "video" | "audio" | "pdf" | "archive" | "code" | "file" {
+function getFileType(
+  name: string,
+): "image" | "video" | "audio" | "pdf" | "archive" | "code" | "file" {
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   if (/^(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif|heic)$/.test(ext)) return "image";
   if (/^(mp4|mov|avi|mkv|webm|m4v|flv)$/.test(ext)) return "video";
   if (/^(mp3|wav|ogg|flac|aac|m4a|opus|wma)$/.test(ext)) return "audio";
   if (ext === "pdf") return "pdf";
   if (/^(zip|tar|gz|bz2|rar|7z|tgz|xz)$/.test(ext)) return "archive";
-  if (/^(js|ts|jsx|tsx|py|go|rs|java|c|cpp|h|cs|rb|php|html|css|json|xml|yaml|yml|toml|sh|md|txt|csv)$/.test(ext)) return "code";
+  if (
+    /^(js|ts|jsx|tsx|py|go|rs|java|c|cpp|h|cs|rb|php|html|css|json|xml|yaml|yml|toml|sh|md|txt|csv)$/.test(
+      ext,
+    )
+  )
+    return "code";
   return "file";
 }
 
@@ -1502,14 +1644,30 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
 
   const stroke = "#0a0a0a";
   const sw = "1.5";
-  const common = { fill: "none", stroke, strokeWidth: sw, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const common = {
+    fill: "none",
+    stroke,
+    strokeWidth: sw,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
 
   if (isLaptop) {
     return (
       <svg className="xfer-device-svg" viewBox="0 0 56 56" aria-hidden="true" {...common}>
         <rect x="4" y="2" width="48" height="34" rx="3" />
         <circle cx="28" cy="7" r="1.5" fill={stroke} stroke="none" />
-        <text x="28" y="25" textAnchor="middle" fontSize="12" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
+        <text
+          x="28"
+          y="25"
+          textAnchor="middle"
+          fontSize="12"
+          fill={stroke}
+          stroke="none"
+          fontFamily="system-ui"
+        >
+          {ready ? "✓" : "…"}
+        </text>
         <line x1="0" y1="38" x2="56" y2="38" />
         <rect x="0" y="38" width="56" height="14" rx="2" />
         <rect x="20" y="42" width="16" height="8" rx="2" />
@@ -1520,7 +1678,17 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
     return (
       <svg className="xfer-device-svg" viewBox="0 0 56 56" aria-hidden="true" {...common}>
         <rect x="2" y="2" width="52" height="36" rx="3" />
-        <text x="28" y="24" textAnchor="middle" fontSize="12" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
+        <text
+          x="28"
+          y="24"
+          textAnchor="middle"
+          fontSize="12"
+          fill={stroke}
+          stroke="none"
+          fontFamily="system-ui"
+        >
+          {ready ? "✓" : "…"}
+        </text>
         <line x1="28" y1="38" x2="28" y2="48" />
         <path d="M14 48 Q28 44 42 48" strokeWidth={sw} />
         <line x1="14" y1="48" x2="42" y2="48" />
@@ -1529,20 +1697,50 @@ function DeviceIcon({ label, ready }: { label: string; ready: boolean }) {
   }
   if (isTablet) {
     return (
-      <svg className="xfer-device-svg xfer-device-svg--tall" viewBox="0 0 44 68" aria-hidden="true" {...common}>
+      <svg
+        className="xfer-device-svg xfer-device-svg--tall"
+        viewBox="0 0 44 68"
+        aria-hidden="true"
+        {...common}
+      >
         <rect x="3" y="2" width="38" height="64" rx="5" />
         <circle cx="22" cy="8" r="2" fill={stroke} stroke="none" />
         <circle cx="22" cy="60" r="3" />
-        <text x="22" y="38" textAnchor="middle" fontSize="11" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
+        <text
+          x="22"
+          y="38"
+          textAnchor="middle"
+          fontSize="11"
+          fill={stroke}
+          stroke="none"
+          fontFamily="system-ui"
+        >
+          {ready ? "✓" : "…"}
+        </text>
       </svg>
     );
   }
   return (
-    <svg className="xfer-device-svg xfer-device-svg--tall" viewBox="0 0 36 68" aria-hidden="true" {...common}>
+    <svg
+      className="xfer-device-svg xfer-device-svg--tall"
+      viewBox="0 0 36 68"
+      aria-hidden="true"
+      {...common}
+    >
       <rect x="2" y="2" width="32" height="64" rx="7" />
       <rect x="12" y="9" width="12" height="4" rx="2" fill={stroke} stroke="none" />
       <rect x="11" y="57" width="14" height="3" rx="1.5" fill={stroke} stroke="none" />
-      <text x="18" y="38" textAnchor="middle" fontSize="11" fill={stroke} stroke="none" fontFamily="system-ui">{ready ? "✓" : "…"}</text>
+      <text
+        x="18"
+        y="38"
+        textAnchor="middle"
+        fontSize="11"
+        fill={stroke}
+        stroke="none"
+        fontFamily="system-ui"
+      >
+        {ready ? "✓" : "…"}
+      </text>
     </svg>
   );
 }
@@ -1560,49 +1758,55 @@ function FileTypeIcon({ name, size }: { name: string; size?: number }) {
   const w = size ?? 28;
   const style = { width: w, height: w };
 
-  if (type === "image") return (
-    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
-      <rect x="3" y="3" width="26" height="26" rx="3" />
-      <circle cx="11" cy="12" r="2.5" />
-      <path d="M3 23 l8-8 5 5 4-4 9 9" />
-    </svg>
-  );
-  if (type === "video") return (
-    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
-      <rect x="2" y="6" width="20" height="20" rx="3" />
-      <path d="M22 12 l8-4v16l-8-4V12z" />
-    </svg>
-  );
-  if (type === "audio") return (
-    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
-      <circle cx="16" cy="16" r="13" />
-      <circle cx="16" cy="16" r="4" />
-      <path d="M16 3a13 13 0 0 1 9.2 22.2" />
-    </svg>
-  );
-  if (type === "pdf") return (
-    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
-      <path d="M6 2h14l8 8v20H6V2z" />
-      <path d="M20 2v8h8" />
-      <path d="M9 17h6M9 21h10M9 25h4" />
-    </svg>
-  );
-  if (type === "archive") return (
-    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
-      <rect x="3" y="12" width="26" height="18" rx="2" />
-      <path d="M3 12 L8 2h16l5 10" />
-      <line x1="13" y1="2" x2="13" y2="12" />
-      <line x1="19" y1="2" x2="19" y2="12" />
-      <rect x="12" y="18" width="8" height="5" rx="1" />
-    </svg>
-  );
-  if (type === "code") return (
-    <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
-      <path d="M6 2h14l8 8v20H6V2z" />
-      <path d="M20 2v8h8" />
-      <path d="M11 19 l4-3-4-3M16 22h7" />
-    </svg>
-  );
+  if (type === "image")
+    return (
+      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+        <rect x="3" y="3" width="26" height="26" rx="3" />
+        <circle cx="11" cy="12" r="2.5" />
+        <path d="M3 23 l8-8 5 5 4-4 9 9" />
+      </svg>
+    );
+  if (type === "video")
+    return (
+      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+        <rect x="2" y="6" width="20" height="20" rx="3" />
+        <path d="M22 12 l8-4v16l-8-4V12z" />
+      </svg>
+    );
+  if (type === "audio")
+    return (
+      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+        <circle cx="16" cy="16" r="13" />
+        <circle cx="16" cy="16" r="4" />
+        <path d="M16 3a13 13 0 0 1 9.2 22.2" />
+      </svg>
+    );
+  if (type === "pdf")
+    return (
+      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+        <path d="M6 2h14l8 8v20H6V2z" />
+        <path d="M20 2v8h8" />
+        <path d="M9 17h6M9 21h10M9 25h4" />
+      </svg>
+    );
+  if (type === "archive")
+    return (
+      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+        <rect x="3" y="12" width="26" height="18" rx="2" />
+        <path d="M3 12 L8 2h16l5 10" />
+        <line x1="13" y1="2" x2="13" y2="12" />
+        <line x1="19" y1="2" x2="19" y2="12" />
+        <rect x="12" y="18" width="8" height="5" rx="1" />
+      </svg>
+    );
+  if (type === "code")
+    return (
+      <svg {...s} style={style} className={`xfer-filetype xfer-filetype--${type}`}>
+        <path d="M6 2h14l8 8v20H6V2z" />
+        <path d="M20 2v8h8" />
+        <path d="M11 19 l4-3-4-3M16 22h7" />
+      </svg>
+    );
   return (
     <svg {...s} style={style} className={`xfer-filetype xfer-filetype--file`}>
       <path d="M6 2h14l8 8v20H6V2z" />
@@ -1641,10 +1845,10 @@ function FileRow({
 }) {
   const pct = Math.round(item.progress * 100);
   const done = item.status === "complete";
-  const failed =
-    item.status === "failed" || item.status === "rejected";
+  const failed = item.status === "failed" || item.status === "rejected";
   const canceled = item.status === "canceled";
-  const offered = item.status === "offered" || item.status === "accepted" || item.status === undefined;
+  const offered =
+    item.status === "offered" || item.status === "accepted" || item.status === undefined;
   const active = item.status === "transferring";
   const isIncoming = item.direction === "incoming";
   const type = getFileType(item.name);
@@ -1660,13 +1864,15 @@ function FileRow({
   const isRetryable = !isLocalValidationError && (item.retryable ?? false);
 
   const errorMessage =
-    (failed || canceled) ? getIssueMessage(item.issue, item.error ?? "Transfer failed.") : undefined;
+    failed || canceled ? getIssueMessage(item.issue, item.error ?? "Transfer failed.") : undefined;
 
   const fromLabel = isIncoming ? `↓ ${peerLabel}` : `↑ ${localLabel}`;
 
   // List row layout
   return (
-    <div className={`xfer-row${done ? " xfer-row--done" : ""}${failed || canceled ? " xfer-row--failed" : ""}`}>
+    <div
+      className={`xfer-row${done ? " xfer-row--done" : ""}${failed || canceled ? " xfer-row--failed" : ""}`}
+    >
       <button
         className={`xfer-row-thumb xfer-thumb--${type}`}
         type="button"
@@ -1682,7 +1888,9 @@ function FileRow({
       </button>
       <div className="xfer-row-body">
         <div className="xfer-row-top">
-          <span className="xfer-row-name" title={item.name}>{item.name}</span>
+          <span className="xfer-row-name" title={item.name}>
+            {item.name}
+          </span>
           <span className="xfer-row-direction">{fromLabel}</span>
         </div>
         <div className="xfer-row-bottom">
@@ -1691,9 +1899,7 @@ function FileRow({
               ? `${formatBytes(item.bytesTransferred)} / ${formatBytes(item.size)}`
               : formatBytes(item.size)}
           </span>
-          {active ? (
-            <span className="xfer-row-pct">{pct}%</span>
-          ) : null}
+          {active ? <span className="xfer-row-pct">{pct}%</span> : null}
           {active && speedBps !== undefined ? (
             <span className="xfer-row-speed">
               {formatSpeed(speedBps)}
@@ -1702,17 +1908,19 @@ function FileRow({
           ) : null}
           {done ? <span className="xfer-row-status xfer-row-status--done">Complete</span> : null}
           {failed ? <span className="xfer-row-status xfer-row-status--fail">Failed</span> : null}
-          {canceled ? <span className="xfer-row-status xfer-row-status--canceled">Cancelled</span> : null}
-          {offered && !active ? <span className="xfer-row-status xfer-row-status--queued">Queued</span> : null}
+          {canceled ? (
+            <span className="xfer-row-status xfer-row-status--canceled">Cancelled</span>
+          ) : null}
+          {offered && !active ? (
+            <span className="xfer-row-status xfer-row-status--queued">Queued</span>
+          ) : null}
         </div>
         {(active || offered) && !done && !failed && !canceled ? (
           <div className="xfer-row-bar">
             <div className="xfer-row-bar-fill" style={{ width: `${pct}%` }} />
           </div>
         ) : null}
-        {errorMessage !== undefined ? (
-          <div className="xfer-row-error">{errorMessage}</div>
-        ) : null}
+        {errorMessage !== undefined ? <div className="xfer-row-error">{errorMessage}</div> : null}
       </div>
       <div className="xfer-row-actions">
         {canSave ? (
@@ -1720,12 +1928,15 @@ function FileRow({
             className={`xfer-row-save${downloaded ? " xfer-row-save--saved" : ""}`}
             href={item.downloadUrl}
             download={item.name}
-            onClick={(e) => { e.stopPropagation(); onDownload(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDownload();
+            }}
           >
             {downloaded ? "✓" : "↓ Save"}
           </a>
         ) : null}
-        {(active || offered) ? (
+        {active || offered ? (
           <button
             className="xfer-row-btn xfer-row-btn--cancel"
             type="button"
@@ -1736,20 +1947,12 @@ function FileRow({
           </button>
         ) : null}
         {done ? (
-          <button
-            className="xfer-row-btn"
-            type="button"
-            onClick={() => onRemove(item.id)}
-          >
+          <button className="xfer-row-btn" type="button" onClick={() => onRemove(item.id)}>
             Dismiss
           </button>
         ) : null}
-        {(failed || canceled) ? (
-          <button
-            className="xfer-row-btn"
-            type="button"
-            onClick={() => onRemove(item.id)}
-          >
+        {failed || canceled ? (
+          <button className="xfer-row-btn" type="button" onClick={() => onRemove(item.id)}>
             Remove
           </button>
         ) : null}
@@ -1783,14 +1986,24 @@ function Lightbox({
   onClose: () => void;
 }) {
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
   return (
-    <div className="xfer-lightbox" onClick={onClose} role="dialog" aria-modal="true" aria-label={`Preview of ${name}`}>
-      <button className="xfer-lightbox-close" type="button" onClick={onClose} aria-label="Close">×</button>
+    <div
+      className="xfer-lightbox"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview of ${name}`}
+    >
+      <button className="xfer-lightbox-close" type="button" onClick={onClose} aria-label="Close">
+        ×
+      </button>
 
       <div className="xfer-lightbox-content" onClick={(e) => e.stopPropagation()}>
         {previewUrl !== undefined ? (
@@ -1917,10 +2130,46 @@ function hasActiveTransfer(transfer: ClientSessionState["transfer"]): boolean {
   });
 }
 
+function createTransferAnalyticsState(
+  fileCount: number,
+  totalBytes: number,
+): TransferAnalyticsState {
+  return {
+    fileCount,
+    totalBytes,
+    completedBytes: 0,
+    startedAt: Date.now(),
+    completed: false,
+    failed: false,
+    startedFileIds: new Set(),
+    completedFileIds: new Set(),
+    failedFileIds: new Set(),
+  };
+}
+
 function toAnalyticsConnectionType(networkType: "local" | "relay" | "unknown"): string {
   if (networkType === "local") return "direct";
   if (networkType === "relay") return "relayed";
   return "unknown";
+}
+
+function failureStageForIssue(issue: string): string {
+  if (issue === "connection_lost" || issue === "peer_disconnected" || issue === "webrtc_failed") {
+    return "connection";
+  }
+  if (
+    issue === "file_too_large" ||
+    issue === "too_many_files" ||
+    issue === "transfer_too_large" ||
+    issue === "unsupported_file" ||
+    issue === "browser_limit" ||
+    issue === "cancelled" ||
+    issue === "cancelled_all" ||
+    issue === "start_failed"
+  ) {
+    return "validation";
+  }
+  return "file_assemble";
 }
 
 async function fetchConfig(signal: AbortSignal) {
