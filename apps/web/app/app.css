@@ -164,6 +164,39 @@ body.session-active {
   50%      { opacity: calc(var(--star-op, 0.5) * 0.4) }
 }
 
+/* Animated receive-link name (Apple-style vertical selection roll).
+   Sized to the inherited line-height (1lh) and aligned on the baseline so it
+   sits on the same line as surrounding text at any font size. */
+.ht-name {
+  display: inline-flex;
+  height: 1lh;
+  overflow: hidden;
+  vertical-align: baseline;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ht-name-roll {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ht-name-item {
+  height: 1lh;
+  line-height: inherit;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ht-name,
+  .ht-name-roll { transition: none; }
+}
+
+/* File chips drifting toward the central handoff session */
+@keyframes ht-pull-tl { 0%, 100% { transform: translate(0, 0) } 50% { transform: translate(14px, 12px) } }
+@keyframes ht-pull-tr { 0%, 100% { transform: translate(0, 0) } 50% { transform: translate(-14px, 12px) } }
+@keyframes ht-pull-l  { 0%, 100% { transform: translate(0, 0) } 50% { transform: translate(16px, 0) } }
+@keyframes ht-pull-bl { 0%, 100% { transform: translate(0, 0) } 50% { transform: translate(14px, -12px) } }
+@keyframes ht-pull-br { 0%, 100% { transform: translate(0, 0) } 50% { transform: translate(-14px, -12px) } }
+
 .landing {
   background: #09090b;
   color: #fafafa;
