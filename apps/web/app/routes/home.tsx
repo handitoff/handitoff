@@ -9,6 +9,7 @@
   useState,
 } from "react";
 import { Link, useNavigate } from "react-router";
+import { AccountMenu } from "../components/account-menu";
 import { VisualQr } from "../components/visual-qr";
 import type { CSSProperties } from "react";
 import { getBrowserDeviceIdentity } from "../lib/device";
@@ -167,50 +168,10 @@ function LNav() {
         handitoff
       </Link>
       <nav className="l-nav-right" aria-label="Main">
-        <Link to="/" className="l-nav-link l-nav-link--active l-nav-link--ancillary">
-          Transfer
+        <Link to="/pricing" className="l-nav-link l-nav-link--ancillary max-md:hidden!">
+          Pricing
         </Link>
-        <a href="#how-it-works" className="l-nav-link l-nav-link--ancillary">
-          How it works
-        </a>
-        <Link to="/privacy" className="l-nav-link l-nav-link--ext">
-          Privacy
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="none"
-            aria-hidden="true"
-            style={{ marginLeft: 4, opacity: 0.6 }}
-          >
-            <path
-              d="M2 2h6v6M8 2L2 8"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </Link>
-        <Link to="/faq" className="l-nav-link l-nav-link--ext">
-          FAQ
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="none"
-            aria-hidden="true"
-            style={{ marginLeft: 4, opacity: 0.6 }}
-          >
-            <path
-              d="M2 2h6v6M8 2L2 8"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </Link>
+        <AccountMenu />
       </nav>
     </header>
   );

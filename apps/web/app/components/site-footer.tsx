@@ -22,6 +22,7 @@ export function SiteFooter() {
           <FooterCol head="Product">
             <FooterLink to="/">Transfer</FooterLink>
             <FooterLink href="/#how-it-works">How it works</FooterLink>
+            <FooterLink to="/pricing">Pricing</FooterLink>
             <FooterLink to="/faq">FAQ</FooterLink>
           </FooterCol>
           <FooterCol head="Trust">

@@ -46,7 +46,7 @@ function ToHero() {
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
         <div className="flex flex-col gap-7">
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-            § Receive links
+            Receive links
           </p>
           <h1 className="font-display text-5xl leading-[0.95] tracking-tight text-zinc-50 lowercase md:text-6xl lg:text-7xl">
             let people hand files off to you
@@ -363,7 +363,7 @@ function ToProTeaser() {
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-12 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-            § handitoff Pro
+            handitoff Pro
           </p>
           <h2 className="font-display text-4xl leading-[0.98] tracking-tight text-zinc-50 lowercase md:text-5xl">
             Receive links will be part of Pro.

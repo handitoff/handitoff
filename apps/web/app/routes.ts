@@ -9,6 +9,7 @@ export default [
   route("send-large-files", "routes/send-large-files.tsx"),
   route("no-install-file-transfer", "routes/no-install-file-transfer.tsx"),
   route("faq", "routes/faq.tsx"),
+  route("pricing", "routes/pricing.tsx"),
   route("to", "routes/to.tsx"),
   route("join/:code", "routes/join.tsx"),
   route("s/:code", "routes/session.tsx"),
