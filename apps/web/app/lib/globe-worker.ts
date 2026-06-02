@@ -8,7 +8,7 @@ self.onmessage = async (e: MessageEvent<{ canvas: OffscreenCanvas }>) => {
   const TEX_W = 1024;
   const TEX_H = 512;
 
-  const response = await fetch("/large-satellite-world-topo-map.jpg");
+  const response = await fetch("/satellite-world-topo-map.webp");
   const blob = await response.blob();
   const bitmap = await createImageBitmap(blob, { resizeWidth: TEX_W, resizeHeight: TEX_H });
 
@@ -56,7 +56,7 @@ self.onmessage = async (e: MessageEvent<{ canvas: OffscreenCanvas }>) => {
       const pi = (vRow[i] + Math.floor(u)) * 4;
       const po = i * 4;
       const dim = shadeDim[i];
-      out[po]     = texPx[pi]     - dim;
+      out[po] = texPx[pi] - dim;
       out[po + 1] = texPx[pi + 1] - dim;
       out[po + 2] = texPx[pi + 2] - dim + 12;
       out[po + 3] = 255;
