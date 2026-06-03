@@ -16,6 +16,7 @@ import { SignalingHub } from "./signaling.js";
 import { InMemorySessionStore, RedisSessionStore } from "./session-store.js";
 import { PrismaAnalyticsStore } from "./analytics-store.js";
 import { PrismaFeedbackStore } from "./feedback-store.js";
+import { PrismaAccountStore } from "./account-store.js";
 import { handleWebSocketUpgrade } from "./websocket.js";
 
 export function createNodeServer() {
@@ -36,6 +37,8 @@ export function createNodeServer() {
 
   const feedbackStore =
     config.databaseUrl !== undefined ? new PrismaFeedbackStore(config.databaseUrl) : undefined;
+  const accountStore =
+    config.databaseUrl !== undefined ? new PrismaAccountStore(config.databaseUrl) : undefined;
 
   const abuseLimits =
     process.env.HANDITOFF_ABUSE_ENABLED === "true" ? DEFAULT_HOSTED_ABUSE_LIMITS : undefined;
@@ -55,6 +58,9 @@ export function createNodeServer() {
   }
   if (feedbackStore !== undefined) {
     appOptions.feedbackStore = feedbackStore;
+  }
+  if (accountStore !== undefined) {
+    appOptions.accountStore = accountStore;
   }
   if (abuseLimits !== undefined) {
     appOptions.abuseLimits = abuseLimits;
@@ -79,15 +85,33 @@ export function createNodeServer() {
       const response = await handler(request);
 
       outgoing.statusCode = response.status;
-      response.headers.forEach((value, key) => outgoing.setHeader(key, value));
+      const setCookies =
+        "getSetCookie" in response.headers
+          ? (response.headers as Headers & { getSetCookie(): string[] }).getSetCookie()
+          : [];
+      response.headers.forEach((value, key) => {
+        if (key.toLowerCase() !== "set-cookie") {
+          outgoing.setHeader(key, value);
+        }
+      });
+      if (setCookies.length > 0) {
+        outgoing.setHeader("set-cookie", setCookies);
+      }
       outgoing.end(Buffer.from(await response.arrayBuffer()));
     })();
   });
 
   server.on("upgrade", (request, socket) => {
-    if (!handleWebSocketUpgrade(hub, request, socket as Socket)) {
-      socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
-    }
+    void (async () => {
+      if (
+        !(await handleWebSocketUpgrade(hub, request, socket as Socket, {
+          config,
+          ...(accountStore === undefined ? {} : { accountStore }),
+        }))
+      ) {
+        socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
+      }
+    })();
   });
 
   const heartbeatSweep = setInterval(() => hub.sweepHeartbeats(), 10_000);

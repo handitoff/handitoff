@@ -28,6 +28,9 @@ const config: ServerConfig = {
       accounts: false,
     },
   },
+  auth: {
+    sessionSecret: "test-secret",
+  },
   rateLimits: {
     maxActiveSessionsPerIp: 5,
     maxJoinAttemptsPerPublicCode: 2,

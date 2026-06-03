@@ -411,6 +411,8 @@ body.session-active {
   display: grid;
   grid-template-columns: 1fr 300px;
   position: relative;
+  border-radius: 16px;
+  overflow: hidden;
   mask-image:
     radial-gradient(circle 12px at calc(100% - 300px) 0, transparent 11.5px, #000 12.5px),
     radial-gradient(circle 12px at calc(100% - 300px) 100%, transparent 11.5px, #000 12.5px);
@@ -564,6 +566,7 @@ body.session-active {
   color: #18181b;
   cursor: pointer;
   font-weight: 600;
+  border-radius: 8px;
 }
 
 .l-ticket-btn--secondary {
@@ -620,6 +623,7 @@ body.session-active {
   padding: 10px;
   position: relative;
   overflow: hidden;
+  border-radius: 10px;
   animation: ht-pulse-glow 3.6s ease-in-out infinite;
 }
 
@@ -676,6 +680,7 @@ body.session-active {
   padding: 0 8px;
   outline: none;
   min-width: 0;
+  border-radius: 8px;
 }
 
 .l-stub-join-input::placeholder {
@@ -701,7 +706,7 @@ body.session-active {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: 8px;
 }
 
 .l-stub-join-btn:hover:not(:disabled) {
@@ -761,7 +766,8 @@ body.session-active {
     grid-template-rows: auto auto;
     mask-image: none;
     -webkit-mask-image: none;
-    border-radius: 0;
+    border-radius: 16px;
+    overflow: hidden;
   }
 
   .l-ticket-perf {

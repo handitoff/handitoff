@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Link, Outlet } from "react-router";
-import { AccountMenu } from "./account-menu";
+import { AccountMenu, type AccountUser } from "./account-menu";
 
-export function AppShell({ children }: { children?: ReactNode }) {
+export function AppShell({ children, user }: { children?: ReactNode; user?: AccountUser }) {
   return (
     <div className="flex min-h-svh flex-col bg-zinc-950 text-zinc-50">
       <header className="flex h-16 shrink-0 items-center justify-between gap-6 border-b border-zinc-900 bg-zinc-950/80 px-6 backdrop-blur md:px-12">
@@ -20,7 +20,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
           >
             Pricing
           </Link>
-          <AccountMenu />
+          <AccountMenu user={user} />
         </nav>
       </header>
       {children ?? <Outlet />}

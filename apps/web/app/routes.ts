@@ -2,6 +2,14 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
   index("routes/home.tsx"),
+  route("account/welcome", "routes/account/welcome.tsx"),
+  route("account", "routes/account/layout.tsx", [
+    index("routes/account/overview.tsx"),
+    route("receive", "routes/account/receive.tsx"),
+    route("sessions", "routes/account/sessions.tsx"),
+    route("plan", "routes/account/plan.tsx"),
+    route("settings", "routes/account/settings.tsx"),
+  ]),
   route("phone-to-pc", "routes/phone-to-pc.tsx"),
   route("iphone-to-windows", "routes/iphone-to-windows.tsx"),
   route("android-to-mac", "routes/android-to-mac.tsx"),

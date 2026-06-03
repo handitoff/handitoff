@@ -1,9 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 
 import type { ServerMessage } from "@handitoff/protocol";
 
+import type { ServerConfig } from "@handitoff/config";
+import type { AccountPlan, AccountStore } from "./account-store.js";
 import type { SignalingHub, SignalingSocket } from "./signaling.js";
 
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -12,7 +14,17 @@ export function handleWebSocketUpgrade(
   hub: SignalingHub,
   request: IncomingMessage,
   socket: Socket,
-): boolean {
+  options: { config: ServerConfig; accountStore?: AccountStore },
+): Promise<boolean> {
+  return handleWebSocketUpgradeAsync(hub, request, socket, options);
+}
+
+async function handleWebSocketUpgradeAsync(
+  hub: SignalingHub,
+  request: IncomingMessage,
+  socket: Socket,
+  options: { config: ServerConfig; accountStore?: AccountStore },
+): Promise<boolean> {
   if (request.url !== "/ws") {
     return false;
   }
@@ -34,7 +46,8 @@ export function handleWebSocketUpgrade(
     ].join("\r\n"),
   );
 
-  hub.addSocket(new NodeWebSocketConnection(socket));
+  const accountPlan = await readAccountPlan(request, options);
+  hub.addSocket(new NodeWebSocketConnection(socket, accountPlan));
   return true;
 }
 
@@ -45,7 +58,10 @@ class NodeWebSocketConnection implements SignalingSocket {
   private buffer = Buffer.alloc(0);
   private closed = false;
 
-  public constructor(private readonly socket: Socket) {
+  public constructor(
+    private readonly socket: Socket,
+    public readonly accountPlan: AccountPlan | undefined,
+  ) {
     socket.on("data", (chunk) => this.read(chunk));
     socket.on("close", () => this.closeHandler?.());
     socket.on("error", () => this.close(1011, "socket_error"));
@@ -97,6 +113,61 @@ class NodeWebSocketConnection implements SignalingSocket {
       }
     }
   }
+}
+
+async function readAccountPlan(
+  request: IncomingMessage,
+  options: { config: ServerConfig; accountStore?: AccountStore },
+): Promise<AccountPlan | undefined> {
+  if (options.accountStore === undefined) {
+    return undefined;
+  }
+  const sessionId = readSignedSessionId(request, options.config.auth.sessionSecret);
+  if (sessionId === undefined) {
+    return undefined;
+  }
+  return (await options.accountStore.getUserBySession(sessionId))?.plan;
+}
+
+function readSignedSessionId(request: IncomingMessage, secret: string): string | undefined {
+  const signed = readCookie(request, "handitoff_session");
+  if (signed === undefined) {
+    return undefined;
+  }
+  const separatorIndex = signed.lastIndexOf(".");
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+  const sessionId = signed.slice(0, separatorIndex);
+  const signature = signed.slice(separatorIndex + 1);
+  const expected = createHmac("sha256", secret).update(sessionId).digest("base64url");
+  if (!safeEqual(signature, expected)) {
+    return undefined;
+  }
+  return sessionId;
+}
+
+function readCookie(request: IncomingMessage, name: string): string | undefined {
+  const cookie = request.headers.cookie;
+  if (cookie === undefined) {
+    return undefined;
+  }
+  for (const part of cookie.split(";")) {
+    const [rawKey, ...rawValue] = part.trim().split("=");
+    if (rawKey === name) {
+      return decodeURIComponent(rawValue.join("="));
+    }
+  }
+  return undefined;
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.byteLength !== rightBuffer.byteLength) {
+    return false;
+  }
+  return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 type DecodedFrame = {

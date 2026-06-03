@@ -1,5 +1,8 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 import type { PublicConfig, PublicIceServer, ServerConfig } from "@handitoff/config";
 import { loadServerConfig } from "@handitoff/config";
+import { PLAN_LIMITS } from "@handitoff/config";
 import { isPublicCode } from "@handitoff/protocol";
 import type { HostedAbuseLimits } from "@handitoff/abuse";
 import { evaluateAbuseSignal } from "@handitoff/abuse";
@@ -18,6 +21,14 @@ import {
   type SessionStore,
 } from "./session-store.js";
 import type { FeedbackInput, FeedbackStoreInterface } from "./feedback-store.js";
+import {
+  AccountHandleTakenError,
+  InMemoryAccountStore,
+  type AccountStore,
+  type AccountUser,
+  type UpdateAccountInput,
+  type UpdateReceiveSettingsInput,
+} from "./account-store.js";
 
 export type ApiAppOptions = {
   config?: ServerConfig;
@@ -30,7 +41,9 @@ export type ApiAppOptions = {
   analytics?: AnalyticsSink;
   analyticsDashboard?: AnalyticsDashboardStore;
   feedbackStore?: FeedbackStoreInterface;
+  accountStore?: AccountStore;
   abuseLimits?: HostedAbuseLimits;
+  oauthFetch?: typeof fetch;
 };
 
 export type AnalyticsRange = "24h" | "7d" | "30d";
@@ -41,11 +54,15 @@ export type AnalyticsDashboardStore = {
 
 type ApiErrorCode =
   | "analytics_unavailable"
+  | "auth_unavailable"
   | "bad_json"
   | "forbidden"
+  | "google_oauth_failed"
   | "invalid_device"
   | "invalid_public_code"
+  | "handle_taken"
   | "not_found"
+  | "plan_required"
   | "rate_limited"
   | "session_ended"
   | "session_expired";
@@ -82,6 +99,32 @@ type AnalyticsEventBody = {
   properties?: unknown;
 };
 
+type UpdateAccountBody = {
+  name?: unknown;
+  handle?: unknown;
+  defaultDeviceName?: unknown;
+};
+
+type UpdateReceiveSettingsBody = {
+  receiveMode?: unknown;
+  requireSenderName?: unknown;
+  allowSenderMessage?: unknown;
+  requireSenderMessage?: unknown;
+};
+
+type GoogleTokenResponse = {
+  access_token?: unknown;
+};
+
+type GoogleUserInfo = {
+  sub?: unknown;
+  email?: unknown;
+  name?: unknown;
+  picture?: unknown;
+};
+
+const ACCOUNT_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
 export function createApiApp(options: ApiAppOptions = {}) {
   const config = options.config ?? loadServerConfig();
   const store = options.store ?? new InMemorySessionStore();
@@ -92,6 +135,8 @@ export function createApiApp(options: ApiAppOptions = {}) {
   const analytics = options.analytics;
   const analyticsDashboard = options.analyticsDashboard;
   const abuseLimits = options.abuseLimits;
+  const accountStore = options.accountStore ?? new InMemoryAccountStore();
+  const oauthFetch = options.oauthFetch ?? globalThis.fetch.bind(globalThis);
 
   return async function handleRequest(request: Request): Promise<Response> {
     const requestId = getRequestId(request);
@@ -114,13 +159,50 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
       if (request.method === "GET" && url.pathname === "/api/config") {
         const iceServers = getIceServers ? await getIceServers() : config.publicConfig.iceServers;
-        const resolvedConfig: PublicConfig = { ...config.publicConfig, iceServers };
+        const accountUser = await requireAccountUser(request, accountStore, config);
+        const resolvedConfig = publicConfigForAccount(
+          { ...config.publicConfig, iceServers },
+          accountUser,
+        );
         return withCors(json(publicConfig(resolvedConfig), { requestId }), request);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/auth/google/start") {
+        return withCors(await startGoogleOAuth(request, requestId, config), request);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/auth/google/callback") {
+        return withCors(
+          await completeGoogleOAuth(request, requestId, config, accountStore, oauthFetch),
+          request,
+        );
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/auth/me") {
+        return withCors(
+          await getAuthenticatedAccount(request, requestId, accountStore, config),
+          request,
+        );
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/sign-out") {
+        return withCors(await signOut(request, requestId, accountStore, config), request);
+      }
+
+      if (request.method === "PATCH" && url.pathname === "/api/account") {
+        return withCors(await updateAccount(request, requestId, accountStore, config), request);
+      }
+
+      if (request.method === "PATCH" && url.pathname === "/api/account/receive") {
+        return withCors(
+          await updateReceiveSettings(request, requestId, accountStore, config),
+          request,
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/api/sessions") {
         return withCors(
-          await createSession(request, requestId, config, store, abuseLimits),
+          await createSession(request, requestId, config, store, abuseLimits, accountStore),
           request,
         );
       }
@@ -179,6 +261,7 @@ async function createSession(
   config: ServerConfig,
   store: SessionStore,
   abuseLimits: HostedAbuseLimits | undefined,
+  accountStore: AccountStore,
 ): Promise<Response> {
   const body = await readJson<CreateSessionBody>(request, requestId);
   if (body instanceof Response) {
@@ -220,12 +303,14 @@ async function createSession(
     }
   }
 
+  const accountUser = await requireAccountUser(request, accountStore, config);
+  const planConfig = publicConfigForAccount(config.publicConfig, accountUser);
   const hostUserAgent = trimToLength(request.headers.get("user-agent") ?? undefined, 256);
   const createInput: CreateSessionInput = {
     hostDeviceId: body.hostDeviceId,
     hostLabel: readOptionalLabel(body.hostLabel, "Host"),
     hostIpKey: ipKey,
-    ttlSeconds: config.publicConfig.limits.unpairedSessionTtlSeconds,
+    ttlSeconds: planConfig.limits.unpairedSessionTtlSeconds,
     ...(hostUserAgent === undefined ? {} : { hostUserAgent }),
   };
   const session = await store.create(createInput);
@@ -322,6 +407,282 @@ async function endSession(
   }
 
   return json(toPublicSession(session), { requestId });
+}
+
+async function startGoogleOAuth(
+  request: Request,
+  requestId: string,
+  config: ServerConfig,
+): Promise<Response> {
+  const google = config.auth.google;
+  if (google === undefined) {
+    return errorResponse("auth_unavailable", "Google sign-in is not configured.", 503, requestId);
+  }
+
+  const state = globalThis.crypto.randomUUID();
+  const authorizationUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  authorizationUrl.searchParams.set("client_id", google.clientId);
+  authorizationUrl.searchParams.set("redirect_uri", google.redirectUri);
+  authorizationUrl.searchParams.set("response_type", "code");
+  authorizationUrl.searchParams.set("scope", "openid email profile");
+  authorizationUrl.searchParams.set("state", state);
+
+  return redirect(authorizationUrl.toString(), {
+    headers: [
+      cookieHeader("handitoff_oauth_state", state, {
+        maxAgeSeconds: 10 * 60,
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: isSecureRequest(request, config),
+      }),
+    ],
+  });
+}
+
+async function completeGoogleOAuth(
+  request: Request,
+  requestId: string,
+  config: ServerConfig,
+  accountStore: AccountStore,
+  oauthFetch: typeof fetch,
+): Promise<Response> {
+  const google = config.auth.google;
+  if (google === undefined) {
+    return errorResponse("auth_unavailable", "Google sign-in is not configured.", 503, requestId);
+  }
+
+  const url = new URL(request.url);
+  const state = url.searchParams.get("state");
+  const expectedState = readCookie(request, "handitoff_oauth_state");
+  if (state === null || expectedState === undefined || state !== expectedState) {
+    return errorResponse("forbidden", "OAuth state is invalid or expired.", 403, requestId);
+  }
+
+  const code = url.searchParams.get("code");
+  if (code === null || code.trim() === "") {
+    return errorResponse(
+      "google_oauth_failed",
+      "Google did not return an OAuth code.",
+      400,
+      requestId,
+    );
+  }
+
+  const tokenResponse = await oauthFetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: google.clientId,
+      client_secret: google.clientSecret,
+      redirect_uri: google.redirectUri,
+      grant_type: "authorization_code",
+    }),
+  });
+  if (!tokenResponse.ok) {
+    return errorResponse("google_oauth_failed", "Google token exchange failed.", 502, requestId);
+  }
+
+  const tokenBody = (await tokenResponse.json().catch(() => undefined)) as
+    | GoogleTokenResponse
+    | undefined;
+  if (typeof tokenBody?.access_token !== "string") {
+    return errorResponse(
+      "google_oauth_failed",
+      "Google token response was invalid.",
+      502,
+      requestId,
+    );
+  }
+
+  const userInfoResponse = await oauthFetch("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: { authorization: `Bearer ${tokenBody.access_token}` },
+  });
+  if (!userInfoResponse.ok) {
+    return errorResponse("google_oauth_failed", "Google user lookup failed.", 502, requestId);
+  }
+
+  const googleUser = (await userInfoResponse.json().catch(() => undefined)) as
+    | GoogleUserInfo
+    | undefined;
+  if (
+    typeof googleUser?.sub !== "string" ||
+    typeof googleUser.email !== "string" ||
+    typeof googleUser.name !== "string"
+  ) {
+    return errorResponse("google_oauth_failed", "Google user profile was invalid.", 502, requestId);
+  }
+
+  const user = await accountStore.upsertOAuthUser({
+    provider: "google",
+    providerSubject: `google:${googleUser.sub}`,
+    email: googleUser.email,
+    name: googleUser.name,
+    ...(typeof googleUser.picture === "string" ? { avatarUrl: googleUser.picture } : {}),
+  });
+  const expiresAt = new Date(Date.now() + ACCOUNT_SESSION_MAX_AGE_SECONDS * 1000);
+  const sessionId = await accountStore.createSession(user.id, expiresAt);
+  const signedSession = signSessionId(sessionId, config.auth.sessionSecret);
+  const destination =
+    user.handle === undefined || user.defaultDeviceName === undefined
+      ? "/account/welcome"
+      : "/account";
+
+  return redirect(new URL(destination, config.publicConfig.appUrl).toString(), {
+    headers: [
+      cookieHeader("handitoff_oauth_state", "", {
+        maxAgeSeconds: 0,
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: isSecureRequest(request, config),
+      }),
+      cookieHeader("handitoff_session", signedSession, {
+        maxAgeSeconds: ACCOUNT_SESSION_MAX_AGE_SECONDS,
+        httpOnly: true,
+        sameSite: "Lax",
+        secure: isSecureRequest(request, config),
+      }),
+    ],
+  });
+}
+
+async function getAuthenticatedAccount(
+  request: Request,
+  requestId: string,
+  accountStore: AccountStore,
+  config: ServerConfig,
+): Promise<Response> {
+  const user = await requireAccountUser(request, accountStore, config);
+  if (user === undefined) {
+    return errorResponse("forbidden", "Sign in is required.", 401, requestId);
+  }
+  return json(accountPayload(user), { requestId });
+}
+
+async function signOut(
+  request: Request,
+  requestId: string,
+  accountStore: AccountStore,
+  config: ServerConfig,
+): Promise<Response> {
+  const sessionId = readSignedSessionId(request, config.auth.sessionSecret);
+  if (sessionId !== undefined) {
+    await accountStore.deleteSession(sessionId);
+  }
+  return json(
+    { ok: true },
+    {
+      requestId,
+      headers: [
+        cookieHeader("handitoff_session", "", {
+          maxAgeSeconds: 0,
+          httpOnly: true,
+          sameSite: "Lax",
+          secure: isSecureRequest(request, config),
+        }),
+      ],
+    },
+  );
+}
+
+async function updateAccount(
+  request: Request,
+  requestId: string,
+  accountStore: AccountStore,
+  config: ServerConfig,
+): Promise<Response> {
+  const user = await requireAccountUser(request, accountStore, config);
+  if (user === undefined) {
+    return errorResponse("forbidden", "Sign in is required.", 401, requestId);
+  }
+  const body = await readJson<UpdateAccountBody>(request, requestId);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  const input: UpdateAccountInput = {};
+  if (body.name !== undefined) {
+    if (!isNonEmptyString(body.name, 120)) {
+      return errorResponse("bad_json", "name must be a non-empty string.", 400, requestId);
+    }
+    input.name = body.name.trim();
+  }
+  if (body.handle !== undefined) {
+    if (body.handle === null || body.handle === "") {
+      input.handle = null;
+    } else if (typeof body.handle === "string" && isValidHandle(body.handle)) {
+      input.handle = normalizeHandle(body.handle);
+    } else {
+      return errorResponse(
+        "bad_json",
+        "handle must be 3-32 lowercase letters, numbers, or hyphens.",
+        400,
+        requestId,
+      );
+    }
+  }
+  if (body.defaultDeviceName !== undefined) {
+    if (body.defaultDeviceName === null || body.defaultDeviceName === "") {
+      input.defaultDeviceName = null;
+    } else if (isNonEmptyString(body.defaultDeviceName, 80)) {
+      input.defaultDeviceName = body.defaultDeviceName.trim();
+    } else {
+      return errorResponse(
+        "bad_json",
+        "defaultDeviceName must be a string up to 80 characters.",
+        400,
+        requestId,
+      );
+    }
+  }
+
+  try {
+    const updated = await accountStore.updateAccount(user.id, input);
+    return json(accountPayload(updated), { requestId });
+  } catch (error) {
+    if (error instanceof AccountHandleTakenError) {
+      return errorResponse("handle_taken", "That handle is already taken.", 409, requestId);
+    }
+    throw error;
+  }
+}
+
+async function updateReceiveSettings(
+  request: Request,
+  requestId: string,
+  accountStore: AccountStore,
+  config: ServerConfig,
+): Promise<Response> {
+  const user = await requireAccountUser(request, accountStore, config);
+  if (user === undefined) {
+    return errorResponse("forbidden", "Sign in is required.", 401, requestId);
+  }
+  const body = await readJson<UpdateReceiveSettingsBody>(request, requestId);
+  if (body instanceof Response) {
+    return body;
+  }
+
+  const input: UpdateReceiveSettingsInput = {};
+  for (const key of [
+    "receiveMode",
+    "requireSenderName",
+    "allowSenderMessage",
+    "requireSenderMessage",
+  ] as const) {
+    if (body[key] !== undefined) {
+      if (typeof body[key] !== "boolean") {
+        return errorResponse("bad_json", `${key} must be a boolean.`, 400, requestId);
+      }
+      input[key] = body[key];
+    }
+  }
+
+  if (input.receiveMode === true && !canUseReceiveLink(user)) {
+    return errorResponse("plan_required", "Receive links require the Pro plan.", 403, requestId);
+  }
+
+  const updated = await accountStore.updateReceiveSettings(user.id, input);
+  return json(accountPayload(updated), { requestId });
 }
 
 async function recordAnalyticsEvent(
@@ -473,6 +834,13 @@ function publicConfig(config: PublicConfig): PublicConfig {
   return config;
 }
 
+function publicConfigForAccount(config: PublicConfig, user: AccountUser | undefined): PublicConfig {
+  if (user === undefined) {
+    return { ...config, limits: PLAN_LIMITS.free };
+  }
+  return { ...config, limits: PLAN_LIMITS[user.plan] };
+}
+
 async function readJson<T>(request: Request, requestId: string): Promise<T | Response> {
   try {
     return (await request.json()) as T;
@@ -486,7 +854,7 @@ function withCors(response: Response, request: Request): Response {
   const headers = new Headers(response.headers);
   headers.set("access-control-allow-origin", origin ?? "*");
   headers.set("vary", "origin");
-  headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
+  headers.set("access-control-allow-methods", "GET,POST,PATCH,OPTIONS");
   headers.set(
     "access-control-allow-headers",
     "authorization,content-type,x-admin-token,x-request-id",
@@ -502,13 +870,20 @@ function withCors(response: Response, request: Request): Response {
   });
 }
 
-function json(body: unknown, options: { requestId: string; status?: number }): Response {
+function json(
+  body: unknown,
+  options: { requestId: string; status?: number; headers?: string[] },
+): Response {
+  const headers = new Headers({
+    "content-type": "application/json; charset=utf-8",
+    "x-request-id": options.requestId,
+  });
+  for (const cookie of options.headers ?? []) {
+    headers.append("set-cookie", cookie);
+  }
   return new Response(JSON.stringify(body), {
     status: options.status ?? 200,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "x-request-id": options.requestId,
-    },
+    headers,
   });
 }
 
@@ -520,6 +895,144 @@ function errorResponse(
   extra: Record<string, unknown> = {},
 ): Response {
   return json({ error: { code, message, ...extra }, requestId }, { status, requestId });
+}
+
+function redirect(location: string, options: { headers?: string[] } = {}): Response {
+  const headers = new Headers({ location });
+  for (const cookie of options.headers ?? []) {
+    headers.append("set-cookie", cookie);
+  }
+  return new Response(null, { status: 302, headers });
+}
+
+async function requireAccountUser(
+  request: Request,
+  accountStore: AccountStore,
+  config: ServerConfig,
+): Promise<AccountUser | undefined> {
+  const sessionId = readSignedSessionId(request, config.auth.sessionSecret);
+  if (sessionId === undefined) {
+    return undefined;
+  }
+  return accountStore.getUserBySession(sessionId);
+}
+
+function accountPayload(user: AccountUser) {
+  const receiveLinkEnabled = canUseReceiveLink(user);
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      ...(user.avatarUrl === undefined ? {} : { avatarUrl: user.avatarUrl }),
+      ...(user.handle === undefined ? {} : { handle: user.handle }),
+      ...(user.defaultDeviceName === undefined
+        ? {}
+        : { defaultDeviceName: user.defaultDeviceName }),
+      plan: user.plan,
+      provider: user.provider,
+      createdAt: user.createdAt.toISOString(),
+    },
+    receive: {
+      receiveMode: receiveLinkEnabled && user.receiveMode,
+      online: receiveLinkEnabled,
+      requireSenderName: user.requireSenderName,
+      allowSenderMessage: user.allowSenderMessage,
+      requireSenderMessage: user.requireSenderMessage,
+    },
+    requests: [],
+    liveReceive: [],
+    sessions: [],
+  };
+}
+
+function canUseReceiveLink(user: AccountUser): boolean {
+  return user.plan === "pro";
+}
+
+function readSignedSessionId(request: Request, secret: string): string | undefined {
+  const signed = readCookie(request, "handitoff_session");
+  if (signed === undefined) {
+    return undefined;
+  }
+  const separatorIndex = signed.lastIndexOf(".");
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+  const sessionId = signed.slice(0, separatorIndex);
+  const signature = signed.slice(separatorIndex + 1);
+  const expected = hmac(sessionId, secret);
+  if (!safeEqual(signature, expected)) {
+    return undefined;
+  }
+  return sessionId;
+}
+
+function signSessionId(sessionId: string, secret: string): string {
+  return `${sessionId}.${hmac(sessionId, secret)}`;
+}
+
+function hmac(value: string, secret: string): string {
+  return createHmac("sha256", secret).update(value).digest("base64url");
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.byteLength !== rightBuffer.byteLength) {
+    return false;
+  }
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function readCookie(request: Request, name: string): string | undefined {
+  const cookie = request.headers.get("cookie");
+  if (cookie === null) {
+    return undefined;
+  }
+  for (const part of cookie.split(";")) {
+    const [rawKey, ...rawValue] = part.trim().split("=");
+    if (rawKey === name) {
+      return decodeURIComponent(rawValue.join("="));
+    }
+  }
+  return undefined;
+}
+
+function cookieHeader(
+  name: string,
+  value: string,
+  options: { maxAgeSeconds: number; httpOnly: boolean; sameSite: "Lax"; secure: boolean },
+): string {
+  const parts = [
+    `${name}=${encodeURIComponent(value)}`,
+    "Path=/",
+    `Max-Age=${options.maxAgeSeconds}`,
+    `SameSite=${options.sameSite}`,
+  ];
+  if (options.httpOnly) {
+    parts.push("HttpOnly");
+  }
+  if (options.secure) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
+
+function isSecureRequest(request: Request, config: ServerConfig): boolean {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  if (forwardedProto !== null) {
+    return forwardedProto.split(",")[0]?.trim() === "https";
+  }
+  return config.publicConfig.appUrl.startsWith("https://");
+}
+
+function normalizeHandle(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isValidHandle(value: string): boolean {
+  return /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])?$/.test(normalizeHandle(value));
 }
 
 function getRequestId(request: Request): string {

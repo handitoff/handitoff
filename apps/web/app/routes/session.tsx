@@ -1331,7 +1331,7 @@ export default function Session({ params }: Route.ComponentProps) {
       {/* Incoming approval overlay */}
       {pendingOffer !== null ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm">
-          <div className="flex w-full max-w-md flex-col gap-4 border border-zinc-800 bg-zinc-900 p-8 text-zinc-50">
+          <div className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-zinc-50">
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
               Incoming files
             </p>
@@ -1407,7 +1407,7 @@ export default function Session({ params }: Route.ComponentProps) {
             {/* Desktop: inline actions */}
             <div className="hidden items-center gap-2 sm:flex">
               <div
-                className="flex h-9 items-center gap-2 border border-dashed border-zinc-700 bg-zinc-900 px-3"
+                className="flex h-9 items-center gap-2 rounded-lg border border-dashed border-zinc-700 bg-zinc-900 px-3"
                 title="Session code"
               >
                 <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
@@ -1436,7 +1436,7 @@ export default function Session({ params }: Route.ComponentProps) {
             {/* Mobile: overflow menu */}
             <div className="relative sm:hidden">
               <button
-                className="flex h-9 w-9 items-center justify-center border border-zinc-800 text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-50"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-50"
                 type="button"
                 aria-label="Session menu"
                 aria-haspopup="menu"
@@ -1452,14 +1452,14 @@ export default function Session({ params }: Route.ComponentProps) {
                     onClick={() => setMenuOpen(false)}
                   />
                   <div
-                    className="absolute right-0 top-[calc(100%+6px)] z-50 flex min-w-44 flex-col border border-zinc-800 bg-zinc-900 p-1.5 shadow-2xl shadow-black/40"
+                    className="absolute right-0 top-[calc(100%+6px)] z-50 flex min-w-44 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-2xl shadow-black/40"
                     role="menu"
                   >
                     <span className="mb-1 border-b border-zinc-800 px-2.5 pb-2 pt-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-zinc-500">
                       {params.code.toUpperCase()}
                     </span>
                     <button
-                      className="px-2.5 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
+                      className="rounded-md px-2.5 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
                       type="button"
                       role="menuitem"
                       onClick={copyLink}
@@ -1467,7 +1467,7 @@ export default function Session({ params }: Route.ComponentProps) {
                       {linkCopied ? "Copied ✓" : "Copy link"}
                     </button>
                     <button
-                      className="px-2.5 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
+                      className="rounded-md px-2.5 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-800"
                       type="button"
                       role="menuitem"
                       onClick={() => {
@@ -1478,7 +1478,7 @@ export default function Session({ params }: Route.ComponentProps) {
                       Feedback
                     </button>
                     <button
-                      className="px-2.5 py-2.5 text-left text-sm text-red-400 transition-colors hover:bg-zinc-800"
+                      className="rounded-md px-2.5 py-2.5 text-left text-sm text-red-400 transition-colors hover:bg-zinc-800"
                       type="button"
                       role="menuitem"
                       onClick={() => {
@@ -1577,7 +1577,7 @@ export default function Session({ params }: Route.ComponentProps) {
               ) : null}
             </div>
           ) : (
-            <div className="m-3 flex flex-col overflow-hidden border border-zinc-900">
+            <div className="m-3 flex flex-col overflow-hidden rounded-lg border border-zinc-900">
               {allTransfers.map((item) => {
                 const previewUrl = getPreviewUrl(item);
                 const speed = speedMap[item.id];
@@ -1645,7 +1645,7 @@ export default function Session({ params }: Route.ComponentProps) {
           {state.dataChannel === "open" && state.crypto === "ready" && !isSessionExpired ? (
             <div
               className={cn(
-                "hidden h-9 shrink-0 items-center gap-2.5 border bg-zinc-900 px-3 sm:flex",
+                "hidden h-9 shrink-0 items-center gap-2.5 rounded-lg border bg-zinc-900 px-3 sm:flex",
                 localLimitReached ? "border-emerald-700/60" : "border-zinc-800",
               )}
               title={`${completedCount} of ${maxFiles} files used this session`}
@@ -1653,7 +1653,7 @@ export default function Session({ params }: Route.ComponentProps) {
               <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
                 Files
               </span>
-              <div className="h-1.5 w-20 overflow-hidden bg-zinc-800">
+              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-zinc-800">
                 <div
                   className={cn(
                     "h-full transition-[width] duration-300",
@@ -1710,7 +1710,7 @@ function BulkBtn({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center whitespace-nowrap border border-zinc-800 px-2.5 py-1 text-[11px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-50"
+      className="inline-flex items-center whitespace-nowrap rounded-md border border-zinc-800 px-2.5 py-1 text-[11px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-50"
     >
       {children}
     </button>
@@ -2033,7 +2033,7 @@ function FileRow({
     >
       <button
         className={cn(
-          "flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden border-0 p-0",
+          "flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-md border-0 p-0",
           THUMB_BG[type],
         )}
         type="button"
@@ -2094,7 +2094,7 @@ function FileRow({
           ) : null}
         </div>
         {(active || offered) && !done && !failed && !canceled ? (
-          <div className="mt-1 h-0.5 overflow-hidden bg-zinc-800">
+          <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-zinc-800">
             <div
               className="h-full bg-zinc-50 transition-[width] duration-300"
               style={{ width: `${pct}%` }}
@@ -2109,7 +2109,7 @@ function FileRow({
         {canSave ? (
           <a
             className={cn(
-              "inline-flex h-8 items-center justify-center whitespace-nowrap px-2.5 text-xs font-semibold transition-colors",
+              "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md px-2.5 text-xs font-semibold transition-colors",
               downloaded
                 ? "bg-emerald-600 text-zinc-50"
                 : "bg-zinc-50 text-zinc-950 hover:bg-zinc-200",
@@ -2132,7 +2132,7 @@ function FileRow({
         ) : null}
         {active || offered ? (
           <button
-            className="inline-flex h-8 items-center justify-center whitespace-nowrap border border-zinc-800 px-2 text-xs text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+            className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md border border-zinc-800 px-2 text-xs text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-200"
             type="button"
             onClick={() => onCancel(item.id, item.fileId)}
             aria-label="Cancel"
@@ -2148,7 +2148,7 @@ function FileRow({
         ) : null}
         {failed && isRetryable ? (
           <button
-            className="inline-flex h-8 items-center justify-center whitespace-nowrap border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-100 transition-colors hover:bg-zinc-900"
+            className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md border border-zinc-200 px-2.5 text-xs font-semibold text-zinc-100 transition-colors hover:bg-zinc-900"
             type="button"
             onClick={() => onRetry(item.id)}
           >
@@ -2171,7 +2171,7 @@ function RowGhostBtn({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 items-center justify-center whitespace-nowrap border border-zinc-800 px-2.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+      className="inline-flex h-8 items-center justify-center whitespace-nowrap rounded-md border border-zinc-800 px-2.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
     >
       {children}
     </button>
@@ -2219,7 +2219,7 @@ function Lightbox({
       </button>
 
       <div
-        className="flex w-full max-w-[min(90vw,900px)] flex-col overflow-hidden border border-zinc-900 bg-zinc-950"
+        className="flex w-full max-w-[min(90vw,900px)] flex-col overflow-hidden rounded-xl border border-zinc-900 bg-zinc-950"
         onClick={(e) => e.stopPropagation()}
       >
         {previewUrl !== undefined ? (
@@ -2246,7 +2246,7 @@ function Lightbox({
           {downloadUrl !== undefined ? (
             <a
               className={cn(
-                "inline-flex h-9 shrink-0 items-center whitespace-nowrap px-4 text-sm font-semibold transition-colors",
+                "inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg px-4 text-sm font-semibold transition-colors",
                 downloaded
                   ? "bg-emerald-600 text-zinc-50"
                   : "bg-zinc-50 text-zinc-950 hover:bg-zinc-200",
@@ -2414,7 +2414,7 @@ function failureStageForIssue(issue: string): string {
 
 async function fetchConfig(signal: AbortSignal) {
   const fallback = loadPublicRuntimeConfig();
-  const response = await fetch(`${fallback.apiUrl}/api/config`, { signal });
+  const response = await fetch(`${fallback.apiUrl}/api/config`, { credentials: "include", signal });
   if (!response.ok) {
     return fallback;
   }

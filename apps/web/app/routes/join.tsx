@@ -188,7 +188,7 @@ export default function Join({ params }: Route.ComponentProps) {
   return (
     <AppShell>
       <main className="flex flex-1 items-center justify-center bg-zinc-950 px-6 py-12">
-        <div className="w-full max-w-md border border-zinc-800 bg-zinc-900 p-10 md:p-14">
+        <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900 p-10 md:p-14">
           <p className="mb-8 font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
             No. 001 — Handshake
           </p>

@@ -2,6 +2,7 @@ import { AppShell } from "../components/app-shell";
 import { SiteFooter } from "../components/site-footer";
 import { Button } from "../components/ui/button";
 import { NameRoll, useCyclingName } from "../components/animated-name";
+import { googleSignInUrl } from "../lib/account";
 import { seoMeta } from "../lib/seo";
 import { cn } from "../lib/utils";
 
@@ -45,11 +46,8 @@ function ToHero() {
     <section className="border-b border-zinc-900 px-6 py-24 md:px-12 md:py-32">
       <div className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
         <div className="flex flex-col gap-7">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-            Receive links
-          </p>
           <h1 className="font-display text-5xl leading-[0.95] tracking-tight text-zinc-50 lowercase md:text-6xl lg:text-7xl">
-            let people hand files off to you
+            Receive links
           </h1>
           <p className="max-w-md text-lg leading-relaxed text-zinc-400">
             Your personal file receive link. Let clients, collaborators, and friends send files to
@@ -106,10 +104,10 @@ function ReceiveLinkObject() {
         <div className="mt-1 text-sm text-zinc-500">Ready to receive files</div>
 
         <div className="mt-7 flex flex-wrap gap-3" aria-hidden="true">
-          <span className="inline-flex h-10 items-center border border-zinc-700 px-4 text-sm text-zinc-200">
+          <span className="inline-flex h-10 items-center rounded-lg border border-zinc-700 px-4 text-sm text-zinc-200">
             Copy link
           </span>
-          <span className="inline-flex h-10 items-center bg-zinc-50 px-4 text-sm font-medium text-zinc-950">
+          <span className="inline-flex h-10 items-center rounded-lg bg-zinc-50 px-4 text-sm font-medium text-zinc-950">
             Turn on receive mode
           </span>
         </div>
@@ -145,7 +143,7 @@ function ToClientExperience() {
               No account needed. Choose files and send them through your browser.
             </p>
             <div className="mt-6 rounded-lg border border-dashed border-zinc-700 bg-zinc-900/40 px-4 py-8 text-center">
-              <span className="inline-flex h-10 items-center bg-zinc-50 px-4 text-sm font-medium text-zinc-950">
+              <span className="inline-flex h-10 items-center rounded-lg bg-zinc-50 px-4 text-sm font-medium text-zinc-950">
                 Choose files
               </span>
             </div>
@@ -172,10 +170,10 @@ function ToClientExperience() {
               Requesting to send. You approve before anything moves.
             </p>
             <div className="mt-6 flex gap-3" aria-hidden="true">
-              <span className="inline-flex h-10 flex-1 items-center justify-center bg-zinc-50 px-4 text-sm font-medium text-zinc-950">
+              <span className="inline-flex h-10 flex-1 items-center justify-center rounded-lg bg-zinc-50 px-4 text-sm font-medium text-zinc-950">
                 Accept
               </span>
-              <span className="inline-flex h-10 flex-1 items-center justify-center border border-zinc-700 px-4 text-sm text-zinc-200">
+              <span className="inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-zinc-700 px-4 text-sm text-zinc-200">
                 Reject
               </span>
             </div>
@@ -362,19 +360,16 @@ function ToProTeaser() {
     >
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-12 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-            handitoff Pro
-          </p>
           <h2 className="font-display text-4xl leading-[0.98] tracking-tight text-zinc-50 lowercase md:text-5xl">
-            Receive links will be part of Pro.
+            handitoff Pro
           </h2>
           <p className="max-w-md text-lg leading-relaxed text-zinc-400">
             Quick handoffs stay free. Pro is for people who use handitoff with clients,
             collaborators, and larger files.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-4">
-            <Button aria-disabled="true" className="cursor-default">
-              Join early access
+            <Button asChild>
+              <a href={googleSignInUrl()}>Log in to claim</a>
             </Button>
             <span className="rounded-full border border-zinc-700 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-400">
               Coming soon

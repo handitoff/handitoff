@@ -14,7 +14,6 @@ export default function Security() {
   return (
     <LegalPage
       label="Security"
-      title="Built for a quick handoff."
       lead="A session exists only long enough for two devices to recognize each other and move what you choose. Short by design, not by accident."
       sections={[
         {

@@ -143,7 +143,7 @@ export default function AdminAnalytics() {
           <select
             value={range}
             onChange={(event) => setRange(event.target.value as Range)}
-            className="h-11 border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
+            className="h-11 rounded-lg border border-zinc-800 bg-zinc-950 px-3 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
           >
             <option value="24h">Last 24 hours</option>
             <option value="7d">Last 7 days</option>
@@ -161,7 +161,7 @@ export default function AdminAnalytics() {
       </header>
 
       {error !== undefined ? (
-        <p className="mb-6 border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+        <p className="mb-6 rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300">
           {error}
         </p>
       ) : null}
@@ -170,7 +170,7 @@ export default function AdminAnalytics() {
         {cards.map(([label, value]) => (
           <div
             key={label}
-            className="border border-zinc-800 bg-zinc-900 p-4"
+            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4"
           >
             <span className="text-xs text-zinc-500">{label}</span>
             <strong className="mt-2 block font-display text-2xl tracking-tight text-zinc-50">
@@ -221,7 +221,7 @@ function Panel({
   return (
     <section
       className={cn(
-        "border border-zinc-800 bg-zinc-900 p-4",
+        "rounded-xl border border-zinc-800 bg-zinc-900 p-4",
         wide && "lg:col-span-3",
       )}
     >

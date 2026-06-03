@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { createHmac } from "node:crypto";
 import type { ServerConfig } from "@handitoff/config";
 import { InMemoryAnalyticsSink } from "@handitoff/analytics";
 
 import { createApiApp } from "./app.js";
+import { InMemoryAccountStore, type AccountStore } from "./account-store.js";
 import { FixedWindowRateLimiter } from "./rate-limits.js";
 import { InMemorySessionStore } from "./session-store.js";
 
@@ -27,6 +29,9 @@ const config: ServerConfig = {
       multiDeviceRooms: false,
       accounts: false,
     },
+  },
+  auth: {
+    sessionSecret: "test-secret",
   },
   rateLimits: {
     maxActiveSessionsPerIp: 2,
@@ -268,6 +273,63 @@ describe("api app", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
   });
+
+  it("rejects duplicate account handles", async () => {
+    const accountStore = new InMemoryAccountStore();
+    const user = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-1",
+      email: "one@example.com",
+      name: "One",
+    });
+    const other = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-2",
+      email: "two@example.com",
+      name: "Two",
+    });
+    await accountStore.updateAccount(other.id, { handle: "taken" });
+    const sessionId = await accountStore.createSession(
+      user.id,
+      new Date(Date.now() + 60_000),
+    );
+    const app = createTestApp({ accountStore });
+
+    const response = await patchJson(
+      app,
+      "/api/account",
+      { handle: "taken" },
+      { cookie: signedSessionCookie(sessionId) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "handle_taken" } });
+  });
+
+  it("requires Pro before receive mode can be enabled", async () => {
+    const accountStore = new InMemoryAccountStore();
+    const user = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-1",
+      email: "one@example.com",
+      name: "One",
+    });
+    const sessionId = await accountStore.createSession(
+      user.id,
+      new Date(Date.now() + 60_000),
+    );
+    const app = createTestApp({ accountStore });
+
+    const response = await patchJson(
+      app,
+      "/api/account/receive",
+      { receiveMode: true },
+      { cookie: signedSessionCookie(sessionId) },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "plan_required" } });
+  });
 });
 
 function createTestApp(
@@ -276,6 +338,7 @@ function createTestApp(
     now?: () => number;
     codes?: string[];
     onSessionExpired?: (sessionId: string, publicCode: string) => void;
+    accountStore?: AccountStore;
   } = {},
 ) {
   let id = 0;
@@ -296,6 +359,7 @@ function createTestApp(
     ...(options.onSessionExpired === undefined
       ? {}
       : { onSessionExpired: options.onSessionExpired }),
+    ...(options.accountStore === undefined ? {} : { accountStore: options.accountStore }),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   });
 }
@@ -312,4 +376,29 @@ function postJson(
       body: JSON.stringify(body),
     }),
   );
+}
+
+function patchJson(
+  app: ReturnType<typeof createTestApp>,
+  path: string,
+  body: unknown,
+  options: { cookie?: string } = {},
+): Promise<Response> {
+  return app(
+    new Request(`http://localhost${path}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(options.cookie === undefined ? {} : { cookie: options.cookie }),
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+function signedSessionCookie(sessionId: string): string {
+  const signature = createHmac("sha256", config.auth.sessionSecret)
+    .update(sessionId)
+    .digest("base64url");
+  return `handitoff_session=${sessionId}.${signature}`;
 }

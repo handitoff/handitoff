@@ -26,9 +26,7 @@ describe("loadPublicConfig", () => {
   });
 
   it("uses one shared file-size limit value with backwards-compatible env names", () => {
-    expect(
-      loadPublicConfig({ HANDITOFF_MAX_FILE_SIZE_BYTES: "1234" }).limits,
-    ).toMatchObject({
+    expect(loadPublicConfig({ HANDITOFF_MAX_FILE_SIZE_BYTES: "1234" }).limits).toMatchObject({
       maxFileSizeBytes: 1234,
       maxRecommendedFileSizeBytes: 1234,
     });
@@ -89,6 +87,8 @@ describe("loadServerConfig", () => {
   it("loads default rate limits", () => {
     const config = loadServerConfig({});
 
+    expect(config.auth.sessionSecret).toBe("dev-session-secret");
+    expect(config.auth.google).toBeUndefined();
     expect(config.rateLimits.maxActiveSessionsPerIp).toBe(50);
     expect(config.rateLimits.maxJoinAttemptsPerPublicCode).toBe(10);
     expect(config.rateLimits.maxSignalingMessagesPerMinutePerSession).toBe(300);
@@ -102,5 +102,23 @@ describe("loadServerConfig", () => {
 
     expect(config.databaseUrl).toBe("postgres://localhost/handitoff");
     expect(config.adminToken).toBe("secret");
+  });
+
+  it("loads Google OAuth server settings", () => {
+    const config = loadServerConfig({
+      HANDITOFF_AUTH_SESSION_SECRET: "session-secret",
+      GOOGLE_OAUTH_CLIENT_ID: "client-id",
+      GOOGLE_OAUTH_CLIENT_SECRET: "client-secret",
+      GOOGLE_OAUTH_REDIRECT_URI: "http://localhost:8787/api/auth/google/callback",
+    });
+
+    expect(config.auth).toEqual({
+      sessionSecret: "session-secret",
+      google: {
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        redirectUri: "http://localhost:8787/api/auth/google/callback",
+      },
+    });
   });
 });

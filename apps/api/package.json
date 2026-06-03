@@ -24,6 +24,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy --config prisma.config.ts",
     "prisma:migrate:dev": "prisma migrate dev --config prisma.config.ts",
     "prisma:db:push": "prisma db push --config prisma.config.ts",
+    "prisma:migrate:reset": "prisma migrate reset --config prisma.config.ts --force",
     "prebuild": "npm run build -w @handitoff/protocol && npm run build -w @handitoff/config && npm run build -w @handitoff/turn && npm run build -w @handitoff/abuse && npm run build -w @handitoff/analytics && npm run prisma:generate",
     "build": "tsc -b",
     "dev": "concurrently \"tsc -b --watch --preserveWatchOutput\" \"node --watch dist/server.js\" --names \"tsc,api\" --prefix-colors \"bgGreen.bold,bgCyan.bold\"",

@@ -16,7 +16,6 @@ export default function Privacy() {
   return (
     <LegalPage
       label="Privacy"
-      title="No permanent profile."
       lead="handitoff.io is built around temporary sessions. There is nothing to log in to, nothing to store, and nothing to delete when you are done."
       sections={[
         {

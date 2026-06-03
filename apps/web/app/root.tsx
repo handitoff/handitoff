@@ -11,6 +11,7 @@ import { useEffect } from "react";
 
 import type { Route } from "./+types/root";
 import appStylesHref from "./app.css?url";
+import { NotFound } from "./components/not-found";
 import { publicRuntimeConfigScript } from "./lib/runtime-config";
 import { trackEvent } from "./lib/analytics";
 
@@ -63,14 +64,17 @@ export function HydrateFallback() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <NotFound />;
+  }
+
   let message = "Oops!";
   let details = "An unexpected error occurred.";
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Error";
-    details =
-      error.status === 404 ? "The requested page could not be found." : error.statusText || details;
+    message = "Error";
+    details = error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
     stack = error.stack;
@@ -83,7 +87,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       </h1>
       <p className="max-w-xl text-base leading-relaxed text-zinc-400">{details}</p>
       {stack && (
-        <pre className="overflow-x-auto border border-zinc-800 bg-zinc-900 p-4 text-xs text-zinc-300">
+        <pre className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-xs text-zinc-300">
           <code>{stack}</code>
         </pre>
       )}

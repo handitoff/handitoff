@@ -25,6 +25,7 @@ export type PublicSession = {
   publicCode: string;
   status: SessionStatus;
   expiresAt: number;
+  limits?: PublicConfig["limits"];
 };
 
 export type PublicConfig = {

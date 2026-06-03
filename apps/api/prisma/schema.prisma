@@ -46,3 +46,37 @@ model FeedbackReport {
   @@index([type], map: "feedback_reports_type_idx")
   @@map("feedback_reports")
 }
+
+model AccountUser {
+  id                 String           @id @default(cuid())
+  email              String           @unique
+  name               String
+  avatarUrl          String?          @map("avatar_url")
+  handle             String?          @unique
+  defaultDeviceName  String?          @map("default_device_name")
+  plan               String           @default("account")
+  provider           String           @default("google")
+  providerSubject    String           @unique @map("provider_subject")
+  receiveMode        Boolean          @default(false) @map("receive_mode")
+  requireSenderName  Boolean          @default(true) @map("require_sender_name")
+  allowSenderMessage Boolean          @default(true) @map("allow_sender_message")
+  requireSenderMessage Boolean        @default(false) @map("require_sender_message")
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions           AccountSession[]
+
+  @@index([handle], map: "account_users_handle_idx")
+  @@map("account_users")
+}
+
+model AccountSession {
+  id        String      @id
+  userId    String      @map("user_id")
+  expiresAt DateTime    @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      AccountUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "account_sessions_user_id_idx")
+  @@index([expiresAt], map: "account_sessions_expires_at_idx")
+  @@map("account_sessions")
+}

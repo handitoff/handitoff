@@ -1,6 +1,37 @@
 export const DEFAULT_MAX_FILE_SIZE_BYTES = 1 * 1024 * 1024 * 1024;
 export const DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
 
+export type AccountPlan = "free" | "account" | "pro";
+
+export type PlanLimits = PublicConfig["limits"];
+
+export const PLAN_LIMITS: Record<AccountPlan, PlanLimits> = {
+  free: {
+    unpairedSessionTtlSeconds: 15 * 60,
+    pairedSessionTtlSeconds: 15 * 60,
+    maxFilesPerTransfer: 25,
+    maxFileSizeBytes: 2 * 1024 * 1024 * 1024,
+    maxRecommendedFileSizeBytes: 2 * 1024 * 1024 * 1024,
+    maxTotalTransferSizeBytes: 2 * 1024 * 1024 * 1024,
+  },
+  account: {
+    unpairedSessionTtlSeconds: 60 * 60,
+    pairedSessionTtlSeconds: 60 * 60,
+    maxFilesPerTransfer: 50,
+    maxFileSizeBytes: 5 * 1024 * 1024 * 1024,
+    maxRecommendedFileSizeBytes: 5 * 1024 * 1024 * 1024,
+    maxTotalTransferSizeBytes: 10 * 1024 * 1024 * 1024,
+  },
+  pro: {
+    unpairedSessionTtlSeconds: 8 * 60 * 60,
+    pairedSessionTtlSeconds: 8 * 60 * 60,
+    maxFilesPerTransfer: 500,
+    maxFileSizeBytes: Number.MAX_SAFE_INTEGER,
+    maxRecommendedFileSizeBytes: Number.MAX_SAFE_INTEGER,
+    maxTotalTransferSizeBytes: Number.MAX_SAFE_INTEGER,
+  },
+};
+
 export type PublicConfig = {
   appUrl: string;
   apiUrl: string;
@@ -38,6 +69,14 @@ export type ServerConfig = {
   redisUrl?: string;
   databaseUrl?: string;
   adminToken?: string;
+  auth: {
+    sessionSecret: string;
+    google?: {
+      clientId: string;
+      clientSecret: string;
+      redirectUri: string;
+    };
+  };
   rateLimits: {
     maxActiveSessionsPerIp: number;
     maxJoinAttemptsPerPublicCode: number;
@@ -171,10 +210,17 @@ export function loadServerConfig(env: ConfigEnv = process.env): ServerConfig {
   const redisUrl = emptyToUndefined(env.HANDITOFF_REDIS_URL);
   const databaseUrl = emptyToUndefined(env.DATABASE_URL);
   const adminToken = emptyToUndefined(env.HANDITOFF_ADMIN_TOKEN);
+  const sessionSecret = readString(env, "HANDITOFF_AUTH_SESSION_SECRET", "dev-session-secret");
+  const googleClientId = emptyToUndefined(env.GOOGLE_OAUTH_CLIENT_ID);
+  const googleClientSecret = emptyToUndefined(env.GOOGLE_OAUTH_CLIENT_SECRET);
+  const googleRedirectUri = emptyToUndefined(env.GOOGLE_OAUTH_REDIRECT_URI);
   const turnSecret = emptyToUndefined(env.HANDITOFF_TURN_SECRET);
   const turnUrls = readStringArray(env, "HANDITOFF_TURN_URLS");
   const config: ServerConfig = {
     publicConfig: loadPublicConfig(env),
+    auth: {
+      sessionSecret,
+    },
     rateLimits: {
       maxActiveSessionsPerIp: readPositiveInteger(
         env,
@@ -203,16 +249,23 @@ export function loadServerConfig(env: ConfigEnv = process.env): ServerConfig {
   if (adminToken !== undefined) {
     config.adminToken = adminToken;
   }
+  if (
+    googleClientId !== undefined &&
+    googleClientSecret !== undefined &&
+    googleRedirectUri !== undefined
+  ) {
+    config.auth.google = {
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
+      redirectUri: googleRedirectUri,
+    };
+  }
 
   if (turnSecret !== undefined && turnUrls.length > 0) {
     config.turn = {
       secret: turnSecret,
       urls: turnUrls,
-      credentialTtlSeconds: readPositiveInteger(
-        env,
-        "HANDITOFF_TURN_CREDENTIAL_TTL_SECONDS",
-        600,
-      ),
+      credentialTtlSeconds: readPositiveInteger(env, "HANDITOFF_TURN_CREDENTIAL_TTL_SECONDS", 600),
     };
   }
 

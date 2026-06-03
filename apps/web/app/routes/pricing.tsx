@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { AppShell } from "../components/app-shell";
 import { SiteFooter } from "../components/site-footer";
 import { Button } from "../components/ui/button";
+import { googleSignInUrl } from "../lib/account";
 import { seoMeta } from "../lib/seo";
 import { cn } from "../lib/utils";
 
@@ -44,9 +45,8 @@ function PricingHero() {
   return (
     <section className="border-b border-zinc-900 px-6 py-24 md:px-12 md:py-32">
       <div className="mx-auto flex max-w-6xl flex-col gap-7">
-        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">Pricing</p>
         <h1 className="max-w-4xl font-display text-5xl leading-[0.95] tracking-tight text-zinc-50 lowercase md:text-6xl lg:text-7xl">
-          Start free. Upgrade when handitoff becomes part of your workflow.
+          Pricing
         </h1>
         <p className="max-w-2xl text-lg leading-relaxed text-zinc-400">
           Use handitoff for quick file handoffs without an account. Upgrade when you need longer
@@ -73,7 +73,7 @@ type Plan = {
   includesHead: string;
   includes: string[];
   bestFor: string[];
-  cta: { label: string } & ({ to: string } | { soon: true });
+  cta: { label: string } & ({ to: string } | { href: string } | { soon: true });
   featured?: boolean;
 };
 
@@ -104,7 +104,7 @@ const plans: Plan[] = [
   {
     name: "Account",
     tagline: "For repeat personal use.",
-    price: "Free",
+    price: "€0",
     includesHead: "Everything in Free, plus",
     includes: [
       "Sign in with OAuth",
@@ -121,12 +121,12 @@ const plans: Plan[] = [
       "Keeping sessions open longer",
       "Preparing your receive link",
     ],
-    cta: { label: "Create account", soon: true },
+    cta: { label: "Create account", href: googleSignInUrl() },
   },
   {
     name: "Pro",
     tagline: "For creators, freelancers, and client work.",
-    price: "Coming soon",
+    price: "€6/month",
     includesHead: "Everything in Account, plus",
     includes: [
       "Personal receive link — handitoff.io/to/yourname",
@@ -145,7 +145,7 @@ const plans: Plan[] = [
       "Freelancers getting files from clients",
       "Small teams moving files during work",
     ],
-    cta: { label: "Join early access", soon: true },
+    cta: { label: "Coming Soon", soon: true },
     featured: true,
   },
 ];
@@ -214,6 +214,10 @@ function PlanCard({ plan }: { plan: Plan }) {
         {"to" in plan.cta ? (
           <Button asChild className="w-full">
             <Link to={plan.cta.to}>{plan.cta.label}</Link>
+          </Button>
+        ) : "href" in plan.cta ? (
+          <Button asChild className="w-full">
+            <a href={plan.cta.href}>{plan.cta.label}</a>
           </Button>
         ) : (
           <Button
@@ -442,7 +446,7 @@ function PricingFinalCta() {
     <section className="px-6 py-24 md:px-12 md:py-32">
       <div className="mx-auto flex max-w-6xl flex-col items-start gap-8">
         <h2 className="max-w-3xl font-display text-4xl leading-[1.02] tracking-tight text-zinc-50 lowercase md:text-6xl">
-          Start free. Pay when handitoff earns its place in your workflow.
+          Start free. Pay when you need.
         </h2>
         <div className="flex flex-wrap items-center gap-4">
           <Button asChild>

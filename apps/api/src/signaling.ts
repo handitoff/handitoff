@@ -1,4 +1,4 @@
-import type { ServerConfig } from "@handitoff/config";
+import { PLAN_LIMITS, type ServerConfig } from "@handitoff/config";
 import {
   validateClientMessage,
   type ClientMessage,
@@ -8,9 +8,11 @@ import {
 
 import { FixedWindowRateLimiter } from "./rate-limits.js";
 import type { SessionStore, StoredSession } from "./session-store.js";
+import type { AccountPlan } from "./account-store.js";
 
 export type SignalingSocket = {
   readonly id: string;
+  readonly accountPlan?: AccountPlan;
   send(message: ServerMessage): void;
   close(code?: number, reason?: string): void;
   onMessage(handler: (raw: string) => void): void;
@@ -27,6 +29,7 @@ export type SignalingHubOptions = {
 
 type ConnectionState = {
   socket: SignalingSocket;
+  accountPlan?: AccountPlan;
   deviceId?: string;
   deviceLabel?: string;
   sessionId?: string;
@@ -66,6 +69,7 @@ export class SignalingHub {
   public addSocket(socket: SignalingSocket): void {
     this.connections.set(socket.id, {
       socket,
+      ...(socket.accountPlan === undefined ? {} : { accountPlan: socket.accountPlan }),
       approved: false,
       lastSeenAt: this.now(),
     });
@@ -162,11 +166,12 @@ export class SignalingHub {
       return;
     }
 
+    const limits = this.limitsFor(connection);
     const session = await this.store.create({
       hostDeviceId: message.deviceId,
       hostLabel: readLabel(message.deviceLabel, "Host"),
       hostIpKey: "websocket",
-      ttlSeconds: this.config.publicConfig.limits.unpairedSessionTtlSeconds,
+      ttlSeconds: limits.unpairedSessionTtlSeconds,
     });
 
     connection.sessionId = session.id;
@@ -329,11 +334,12 @@ export class SignalingHub {
       return;
     }
 
+    const limits = this.limitsFor(connection);
     const updated = await this.store.attachGuest({
       sessionId: message.sessionId,
       guestDeviceId: pending.guestDeviceId,
       guestLabel: pending.guestDeviceLabel,
-      ttlSeconds: this.config.publicConfig.limits.pairedSessionTtlSeconds,
+      ttlSeconds: limits.pairedSessionTtlSeconds,
     });
     if (updated === undefined) {
       this.sendError(connection, "session_not_found", "Session not found.");
@@ -610,6 +616,10 @@ export class SignalingHub {
 
   private sendError(connection: ConnectionState, code: ProtocolErrorCode, message: string): void {
     connection.socket.send({ type: "error", code, message });
+  }
+
+  private limitsFor(connection: ConnectionState): (typeof PLAN_LIMITS)[AccountPlan] {
+    return PLAN_LIMITS[connection.accountPlan ?? "free"];
   }
 
   private checkSignalingRate(connection: ConnectionState, sessionId: string): boolean {

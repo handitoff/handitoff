@@ -272,7 +272,7 @@ function LReceiveLinks() {
           </p>
           <Link
             to="/to"
-            className="mt-1 inline-flex w-fit items-center border border-zinc-50 bg-zinc-50 px-6 py-3 font-mono text-xs uppercase tracking-[0.22em] text-zinc-950 no-underline transition-colors hover:bg-zinc-200"
+            className="mt-1 inline-flex w-fit items-center rounded-lg border border-zinc-50 bg-zinc-50 px-6 py-3 font-mono text-xs uppercase tracking-[0.22em] text-zinc-950 no-underline transition-colors hover:bg-zinc-200"
           >
             Learn about receive links
           </Link>
@@ -529,7 +529,7 @@ function LFinalCta() {
         <button
           type="button"
           onClick={scrollToTop}
-          className="border border-zinc-50 bg-zinc-50 px-8 py-3.5 font-mono text-xs uppercase tracking-[0.22em] text-zinc-950 transition-colors hover:bg-zinc-200"
+          className="rounded-lg border border-zinc-50 bg-zinc-50 px-8 py-3.5 font-mono text-xs uppercase tracking-[0.22em] text-zinc-950 transition-colors hover:bg-zinc-200"
         >
           Start a handoff
         </button>
