@@ -311,6 +311,7 @@ async function createSession(
     hostLabel: readOptionalLabel(body.hostLabel, "Host"),
     hostIpKey: ipKey,
     ttlSeconds: planConfig.limits.unpairedSessionTtlSeconds,
+    ...(accountUser === undefined ? {} : { limits: planConfig.limits }),
     ...(hostUserAgent === undefined ? {} : { hostUserAgent }),
   };
   const session = await store.create(createInput);
@@ -836,7 +837,7 @@ function publicConfig(config: PublicConfig): PublicConfig {
 
 function publicConfigForAccount(config: PublicConfig, user: AccountUser | undefined): PublicConfig {
   if (user === undefined) {
-    return { ...config, limits: PLAN_LIMITS.free };
+    return config;
   }
   return { ...config, limits: PLAN_LIMITS[user.plan] };
 }

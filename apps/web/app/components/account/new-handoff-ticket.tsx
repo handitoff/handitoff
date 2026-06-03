@@ -120,6 +120,9 @@ function NewHandoffOverlay({
         window.sessionStorage.setItem("handitoff.connectedPeerLabel", peerLabel);
         window.sessionStorage.setItem("handitoff.connectedCode", current.publicCode ?? "");
         window.sessionStorage.setItem("handitoff.role", "host");
+        if (message.limits !== undefined) {
+          window.sessionStorage.setItem("handitoff.sessionLimits", JSON.stringify(message.limits));
+        }
         navigate(`/s/${current.publicCode ?? ""}`);
         return;
       }

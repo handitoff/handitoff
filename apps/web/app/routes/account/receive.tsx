@@ -450,11 +450,6 @@ function ReceiveLocked() {
           </div>
         </div>
       </Panel>
-
-      <p className="text-sm leading-relaxed text-zinc-500">
-        Quick handoffs stay free. Pro is for people who use handitoff with clients and
-        collaborators.
-      </p>
     </>
   );
 }

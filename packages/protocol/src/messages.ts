@@ -1,4 +1,7 @@
 import type { ProtocolErrorCode } from "./errors.js";
+import type { PublicConfig } from "./types.js";
+
+export type SessionLimits = PublicConfig["limits"];
 
 export type ClientMessage =
   | {
@@ -71,18 +74,21 @@ export type ServerMessage =
       publicCode: string;
       joinUrl: string;
       expiresAt: number;
+      limits?: SessionLimits;
     }
   | {
       type: "session:join-request";
       sessionId: string;
       peerDeviceId: string;
       peerDeviceLabel: string;
+      limits?: SessionLimits;
     }
   | {
       type: "session:joined";
       sessionId: string;
       peerDeviceId: string;
       peerDeviceLabel: string;
+      limits?: SessionLimits;
     }
   | {
       type: "session:resumed";
@@ -90,6 +96,7 @@ export type ServerMessage =
       peerDeviceId: string;
       peerDeviceLabel: string;
       role: "host" | "guest";
+      limits?: SessionLimits;
     }
   | {
       type: "session:rejected";
@@ -98,6 +105,7 @@ export type ServerMessage =
   | {
       type: "peer:connected";
       peerDeviceId: string;
+      limits?: SessionLimits;
     }
   | {
       type: "peer:disconnected";

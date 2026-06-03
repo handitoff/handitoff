@@ -166,12 +166,14 @@ export class SignalingHub {
       return;
     }
 
-    const limits = this.limitsFor(connection);
+    const accountLimits = this.accountLimitsFor(connection);
+    const limits = accountLimits ?? this.config.publicConfig.limits;
     const session = await this.store.create({
       hostDeviceId: message.deviceId,
       hostLabel: readLabel(message.deviceLabel, "Host"),
       hostIpKey: "websocket",
       ttlSeconds: limits.unpairedSessionTtlSeconds,
+      ...(accountLimits === undefined ? {} : { limits: accountLimits }),
     });
 
     connection.sessionId = session.id;
@@ -182,6 +184,7 @@ export class SignalingHub {
       publicCode: session.publicCode,
       joinUrl: new URL(`/join/${session.publicCode}`, this.config.publicConfig.appUrl).toString(),
       expiresAt: session.expiresAt,
+      ...(session.limits === undefined ? {} : { limits: session.limits }),
     });
   }
 
@@ -303,12 +306,21 @@ export class SignalingHub {
       peerDeviceId: peerDevice.id,
       peerDeviceLabel: peerDevice.label,
       role,
+      ...(session.limits === undefined ? {} : { limits: session.limits }),
     });
 
     const peer = this.findConnection(session.id, peerDevice.id);
     if (peer !== undefined) {
-      peer.socket.send({ type: "peer:connected", peerDeviceId: message.deviceId });
-      connection.socket.send({ type: "peer:connected", peerDeviceId: peerDevice.id });
+      peer.socket.send({
+        type: "peer:connected",
+        peerDeviceId: message.deviceId,
+        ...(session.limits === undefined ? {} : { limits: session.limits }),
+      });
+      connection.socket.send({
+        type: "peer:connected",
+        peerDeviceId: peerDevice.id,
+        ...(session.limits === undefined ? {} : { limits: session.limits }),
+      });
     }
   }
 
@@ -334,7 +346,7 @@ export class SignalingHub {
       return;
     }
 
-    const limits = this.limitsFor(connection);
+    const limits = session.limits ?? this.config.publicConfig.limits;
     const updated = await this.store.attachGuest({
       sessionId: message.sessionId,
       guestDeviceId: pending.guestDeviceId,
@@ -356,8 +368,13 @@ export class SignalingHub {
       sessionId: message.sessionId,
       peerDeviceId: session.hostDeviceId,
       peerDeviceLabel: session.hostDevice.label,
+      ...(session.limits === undefined ? {} : { limits: session.limits }),
     });
-    connection.socket.send({ type: "peer:connected", peerDeviceId: pending.guestDeviceId });
+    connection.socket.send({
+      type: "peer:connected",
+      peerDeviceId: pending.guestDeviceId,
+      ...(session.limits === undefined ? {} : { limits: session.limits }),
+    });
   }
 
   private async rejectPeer(
@@ -376,10 +393,11 @@ export class SignalingHub {
     }
 
     this.pendingJoinsBySession.delete(message.sessionId);
+    const limits = session.limits ?? this.config.publicConfig.limits;
     await this.store.updateStatus(
       message.sessionId,
       "waiting",
-      this.config.publicConfig.limits.unpairedSessionTtlSeconds,
+      limits.unpairedSessionTtlSeconds,
     );
     this.connections
       .get(pending.guestSocketId)
@@ -618,8 +636,10 @@ export class SignalingHub {
     connection.socket.send({ type: "error", code, message });
   }
 
-  private limitsFor(connection: ConnectionState): (typeof PLAN_LIMITS)[AccountPlan] {
-    return PLAN_LIMITS[connection.accountPlan ?? "free"];
+  private accountLimitsFor(
+    connection: ConnectionState,
+  ): (typeof PLAN_LIMITS)[AccountPlan] | undefined {
+    return connection.accountPlan === undefined ? undefined : PLAN_LIMITS[connection.accountPlan];
   }
 
   private checkSignalingRate(connection: ConnectionState, sessionId: string): boolean {

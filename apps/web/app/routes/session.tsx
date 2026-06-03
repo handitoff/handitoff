@@ -11,6 +11,7 @@ import {
   type FileIssue,
   type TransferProgressSnapshot,
 } from "@handitoff/transfer";
+import type { PublicConfig } from "@handitoff/config";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Check, Download, MoreVertical, X } from "lucide-react";
@@ -40,6 +41,7 @@ type StoredSessionContext = {
   peerDeviceId: string;
   peerDeviceLabel: string;
   role: "host" | "guest";
+  limits?: PublicConfig["limits"];
 };
 
 type TransferAnalyticsState = {
@@ -790,7 +792,8 @@ export default function Session({ params }: Route.ComponentProps) {
         if (controller.signal.aborted) {
           return;
         }
-        configRef.current = config;
+        configRef.current =
+          stored.limits === undefined ? config : { ...config, limits: stored.limits };
         const socket = new HanditoffWebSocketClient(config.wsUrl);
         socketRef.current = socket;
 
@@ -2432,6 +2435,7 @@ function readStoredSessionContext(publicCode: string): StoredSessionContext | un
   const peerDeviceLabel = window.sessionStorage.getItem("handitoff.connectedPeerLabel");
   const connectedCode = window.sessionStorage.getItem("handitoff.connectedCode");
   const role = window.sessionStorage.getItem("handitoff.role");
+  const limits = readStoredSessionLimits();
 
   if (
     sessionId === null ||
@@ -2453,7 +2457,31 @@ function readStoredSessionContext(publicCode: string): StoredSessionContext | un
     peerDeviceId,
     peerDeviceLabel,
     role,
+    ...(limits === undefined ? {} : { limits }),
   };
+}
+
+function readStoredSessionLimits(): PublicConfig["limits"] | undefined {
+  const raw = window.sessionStorage.getItem("handitoff.sessionLimits");
+  if (raw === null) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<PublicConfig["limits"]>;
+    if (
+      typeof parsed.unpairedSessionTtlSeconds !== "number" ||
+      typeof parsed.pairedSessionTtlSeconds !== "number" ||
+      typeof parsed.maxFilesPerTransfer !== "number" ||
+      typeof parsed.maxFileSizeBytes !== "number" ||
+      typeof parsed.maxRecommendedFileSizeBytes !== "number" ||
+      typeof parsed.maxTotalTransferSizeBytes !== "number"
+    ) {
+      return undefined;
+    }
+    return parsed as PublicConfig["limits"];
+  } catch {
+    return undefined;
+  }
 }
 
 function clearStoredSessionContext(): void {

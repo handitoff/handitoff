@@ -4,6 +4,7 @@ import {
   type Session,
   type SessionStatus,
 } from "@handitoff/protocol";
+import type { PlanLimits } from "@handitoff/config";
 
 export type SessionDecision = "approved" | "rejected";
 
@@ -11,6 +12,7 @@ export type StoredSession = Session & {
   hostDevice: Device;
   guestDevice?: Device;
   hostIpKey: string;
+  limits?: PlanLimits;
   endedAt?: number;
   endReason?: string;
   lastDecision?: {
@@ -26,6 +28,7 @@ export type CreateSessionInput = {
   hostUserAgent?: string;
   hostIpKey: string;
   ttlSeconds: number;
+  limits?: PlanLimits;
   now?: number;
 };
 
@@ -96,6 +99,7 @@ export class InMemorySessionStore implements SessionStore {
       status: "waiting",
       hostDeviceId: input.hostDeviceId,
       hostIpKey: input.hostIpKey,
+      ...(input.limits === undefined ? {} : { limits: input.limits }),
       hostDevice: {
         id: input.hostDeviceId,
         role: "host",
@@ -334,6 +338,7 @@ export class RedisSessionStore implements SessionStore {
       status: "waiting",
       hostDeviceId: input.hostDeviceId,
       hostIpKey: input.hostIpKey,
+      ...(input.limits === undefined ? {} : { limits: input.limits }),
       hostDevice: {
         id: input.hostDeviceId,
         role: "host",
@@ -557,6 +562,7 @@ export function toPublicSession(session: StoredSession) {
     publicCode: session.publicCode,
     status: session.status,
     expiresAt: session.expiresAt,
+    ...(session.limits === undefined ? {} : { limits: session.limits }),
   };
 }
 

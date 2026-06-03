@@ -90,6 +90,12 @@ export default function Join({ params }: Route.ComponentProps) {
             window.sessionStorage.setItem("handitoff.connectedPeerLabel", message.peerDeviceLabel);
             window.sessionStorage.setItem("handitoff.connectedCode", publicCode);
             window.sessionStorage.setItem("handitoff.role", "guest");
+            if (message.limits !== undefined) {
+              window.sessionStorage.setItem(
+                "handitoff.sessionLimits",
+                JSON.stringify(message.limits),
+              );
+            }
             trackEvent("session_peer_connected", undefined, { sessionId: message.sessionId });
             navigate(`/s/${publicCode}`);
             return;

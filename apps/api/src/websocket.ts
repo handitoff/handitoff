@@ -57,11 +57,15 @@ class NodeWebSocketConnection implements SignalingSocket {
   private closeHandler: (() => void) | undefined;
   private buffer = Buffer.alloc(0);
   private closed = false;
+  public readonly accountPlan?: AccountPlan;
 
   public constructor(
     private readonly socket: Socket,
-    public readonly accountPlan: AccountPlan | undefined,
+    accountPlan: AccountPlan | undefined,
   ) {
+    if (accountPlan !== undefined) {
+      this.accountPlan = accountPlan;
+    }
     socket.on("data", (chunk) => this.read(chunk));
     socket.on("close", () => this.closeHandler?.());
     socket.on("error", () => this.close(1011, "socket_error"));
