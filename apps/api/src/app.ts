@@ -567,10 +567,7 @@ async function completeGoogleOAuth(
   const expiresAt = new Date(Date.now() + ACCOUNT_SESSION_MAX_AGE_SECONDS * 1000);
   const sessionId = await accountStore.createSession(user.id, expiresAt);
   const signedSession = signSessionId(sessionId, config.auth.sessionSecret);
-  const destination =
-    user.handle === undefined || user.defaultDeviceName === undefined
-      ? "/account/welcome"
-      : "/account";
+  const destination = user.handle === undefined ? "/account/welcome" : "/account";
 
   return redirect(new URL(destination, config.publicConfig.appUrl).toString(), {
     headers: [

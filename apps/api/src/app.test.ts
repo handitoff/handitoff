@@ -325,6 +325,56 @@ describe("api app", () => {
     await expect(response.json()).resolves.toMatchObject({ error: { code: "plan_required" } });
   });
 
+  it("does not send completed account users back through welcome on Google sign-in", async () => {
+    const accountStore = new InMemoryAccountStore();
+    const user = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-1",
+      email: "one@example.com",
+      name: "One",
+    });
+    await accountStore.updateAccount(user.id, { handle: "one" });
+    const oauthFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: "token-1",
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          sub: "user-1",
+          email: "one@example.com",
+          name: "One",
+        }),
+      );
+    const app = createApiApp({
+      config: {
+        ...config,
+        auth: {
+          ...config.auth,
+          google: {
+            clientId: "client-1",
+            clientSecret: "secret-1",
+            redirectUri: "http://localhost/api/auth/google/callback",
+          },
+        },
+      },
+      accountStore,
+      oauthFetch,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+
+    const response = await app(
+      new Request("http://localhost/api/auth/google/callback?code=code-1&state=state-1", {
+        headers: { cookie: "handitoff_oauth_state=state-1" },
+      }),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("http://localhost:5173/account");
+  });
+
   it("manages signed-in account devices", async () => {
     const accountStore = new InMemoryAccountStore();
     const user = await accountStore.upsertOAuthUser({

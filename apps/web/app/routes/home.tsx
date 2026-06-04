@@ -168,6 +168,9 @@ function LNav() {
         handitoff
       </Link>
       <nav className="l-nav-right" aria-label="Main">
+        <Link to="/privacy" className="l-nav-link l-nav-link--ancillary">
+          Privacy
+        </Link>
         <Link to="/pricing" className="l-nav-link l-nav-link--ancillary max-md:hidden!">
           Pricing
         </Link>
