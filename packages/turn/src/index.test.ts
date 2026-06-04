@@ -23,7 +23,12 @@ describe("issueTurnCredential", () => {
 
   it("username encodes the expiry timestamp", () => {
     const ttl = 600;
-    const result = issueTurnCredential({ secret: SECRET, urls: URLS, ttlSeconds: ttl, now: () => FIXED_NOW });
+    const result = issueTurnCredential({
+      secret: SECRET,
+      urls: URLS,
+      ttlSeconds: ttl,
+      now: () => FIXED_NOW,
+    });
     const expectedExpiry = Math.floor(FIXED_NOW / 1000) + ttl;
 
     expect(result.username).toBe(`${expectedExpiry}:handitoff`);

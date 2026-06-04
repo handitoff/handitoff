@@ -80,7 +80,9 @@ function getBrowserProperties(): TrackEventProperties {
   };
 }
 
-function compactProperties(properties: TrackEventProperties): Record<string, string | number | boolean | null> {
+function compactProperties(
+  properties: TrackEventProperties,
+): Record<string, string | number | boolean | null> {
   const compacted: Record<string, string | number | boolean | null> = {};
   for (const [key, value] of Object.entries(properties)) {
     if (value !== undefined) {

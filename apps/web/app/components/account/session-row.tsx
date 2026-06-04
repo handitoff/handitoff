@@ -70,13 +70,7 @@ export function SessionRow({ session }: { session: HandoffSession }) {
   );
 }
 
-function SessionAction({
-  children,
-  emphasis,
-}: {
-  children: React.ReactNode;
-  emphasis?: boolean;
-}) {
+function SessionAction({ children, emphasis }: { children: React.ReactNode; emphasis?: boolean }) {
   return (
     <button
       type="button"

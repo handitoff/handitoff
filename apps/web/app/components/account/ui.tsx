@@ -39,16 +39,9 @@ export function SectionHeading({
 
 // ── Panel ──────────────────────────────────────────────────────────────────
 
-export function Panel({
-  className,
-  children,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+export function Panel({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      className={cn("rounded-xl border border-zinc-800 bg-zinc-950 p-5", className)}
-      {...props}
-    >
+    <div className={cn("rounded-xl border border-zinc-800 bg-zinc-950 p-5", className)} {...props}>
       {children}
     </div>
   );
@@ -230,10 +223,7 @@ export function EmptyState({
 
 // ── Status / tier badges ───────────────────────────────────────────────────
 
-const STATUS_VARIANT: Record<
-  SessionStatus,
-  "default" | "success" | "warn" | "danger" | "info"
-> = {
+const STATUS_VARIANT: Record<SessionStatus, "default" | "success" | "warn" | "danger" | "info"> = {
   waiting: "warn",
   connected: "info",
   transferring: "info",

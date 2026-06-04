@@ -1390,10 +1390,7 @@ export default function Session({ params }: Route.ComponentProps) {
               </button>
               {menuOpen ? (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setMenuOpen(false)}
-                  />
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
                   <div
                     className="absolute right-0 top-[calc(100%+6px)] z-50 flex min-w-44 flex-col rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-2xl shadow-black/40"
                     role="menu"
@@ -1445,12 +1442,7 @@ export default function Session({ params }: Route.ComponentProps) {
         {isSessionEnded ? (
           <Banner variant="info">
             <span>Session ended.</span>
-            <Button
-              variant="secondary"
-              size="sm"
-              type="button"
-              onClick={() => navigate("/")}
-            >
+            <Button variant="secondary" size="sm" type="button" onClick={() => navigate("/")}>
               Start new session
             </Button>
           </Banner>
@@ -1469,9 +1461,7 @@ export default function Session({ params }: Route.ComponentProps) {
                 : `${allTransfers.length} files`}
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
-            {hasActiveTransfers ? (
-              <BulkBtn onClick={cancelAllTransfers}>Cancel all</BulkBtn>
-            ) : null}
+            {hasActiveTransfers ? <BulkBtn onClick={cancelAllTransfers}>Cancel all</BulkBtn> : null}
             {hasAnyFailed ? <BulkBtn onClick={removeFailedItems}>Clear failed</BulkBtn> : null}
             {hasAnyCompleted ? (
               <BulkBtn
@@ -1621,13 +1611,7 @@ export default function Session({ params }: Route.ComponentProps) {
   );
 }
 
-function Banner({
-  variant,
-  children,
-}: {
-  variant: "warn" | "info";
-  children: React.ReactNode;
-}) {
+function Banner({ variant, children }: { variant: "warn" | "info"; children: React.ReactNode }) {
   return (
     <div
       className={cn(
@@ -1642,13 +1626,7 @@ function Banner({
   );
 }
 
-function BulkBtn({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function BulkBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
@@ -2006,9 +1984,7 @@ function FileRow({
               ? `${formatBytes(item.bytesTransferred)} / ${formatBytes(item.size)}`
               : formatBytes(item.size)}
           </span>
-          {active ? (
-            <span className="text-[11px] tabular-nums text-zinc-400">{pct}%</span>
-          ) : null}
+          {active ? <span className="text-[11px] tabular-nums text-zinc-400">{pct}%</span> : null}
           {active && speedBps !== undefined ? (
             <span className="text-[11px] tabular-nums text-zinc-400">
               {formatSpeed(speedBps)}
@@ -2083,9 +2059,7 @@ function FileRow({
             <X className="h-3.5 w-3.5" />
           </button>
         ) : null}
-        {done ? (
-          <RowGhostBtn onClick={() => onRemove(item.id)}>Dismiss</RowGhostBtn>
-        ) : null}
+        {done ? <RowGhostBtn onClick={() => onRemove(item.id)}>Dismiss</RowGhostBtn> : null}
         {failed || canceled ? (
           <RowGhostBtn onClick={() => onRemove(item.id)}>Remove</RowGhostBtn>
         ) : null}
@@ -2103,13 +2077,7 @@ function FileRow({
   );
 }
 
-function RowGhostBtn({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function RowGhostBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"

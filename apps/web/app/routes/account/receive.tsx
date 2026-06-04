@@ -229,9 +229,7 @@ function HandleEditor() {
         setConfirmingChange(false);
         setError(undefined);
       })
-      .catch(() =>
-        setError("Could not save that handle. It may already be taken — try another."),
-      );
+      .catch(() => setError("Could not save that handle. It may already be taken — try another."));
   };
 
   const handleSave = () => {
@@ -297,8 +295,8 @@ function HandleEditor() {
           <div className="flex flex-col gap-3 rounded-lg border border-amber-900/60 bg-amber-950/30 p-3.5">
             <p className="text-[13px] leading-relaxed text-amber-200">
               Changing your handle releases{" "}
-              <span className="font-mono text-amber-100">{receiveLinkFor(handle)}</span> immediately.
-              That link stops working right away — there's no redirect to{" "}
+              <span className="font-mono text-amber-100">{receiveLinkFor(handle)}</span>{" "}
+              immediately. That link stops working right away — there's no redirect to{" "}
               <span className="font-mono text-amber-100">{receiveLinkFor(normalized)}</span>.
             </p>
             <div className="flex flex-wrap gap-2">

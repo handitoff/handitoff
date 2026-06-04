@@ -135,7 +135,8 @@ const noInstallFaq: FaqItem[] = [
   },
   {
     question: "Does this work on desktop?",
-    answer: "Yes. handitoff works from modern desktop browsers on Windows, macOS, Linux, and ChromeOS.",
+    answer:
+      "Yes. handitoff works from modern desktop browsers on Windows, macOS, Linux, and ChromeOS.",
   },
   {
     question: "Do I need a browser extension?",
@@ -207,8 +208,7 @@ export const seoPages = {
     content: {
       label: "Phone to PC",
       title: "Send files from your phone to your PC",
-      lead:
-        "Move photos, videos, PDFs, ZIPs, documents, and screenshots from your phone to your PC without cables, chat apps, cloud drives, or email.",
+      lead: "Move photos, videos, PDFs, ZIPs, documents, and screenshots from your phone to your PC without cables, chat apps, cloud drives, or email.",
       steps: [
         "Open handitoff.io on your PC.",
         "Scan the QR code with your phone.",
@@ -240,8 +240,7 @@ export const seoPages = {
     content: {
       label: "iPhone to Windows",
       title: "Transfer files from iPhone to Windows",
-      lead:
-        "AirDrop is useful inside Apple devices. iPhone to Windows often means iCloud, WhatsApp, Google Drive, email, or a cable. handitoff keeps the flow in the browser.",
+      lead: "AirDrop is useful inside Apple devices. iPhone to Windows often means iCloud, WhatsApp, Google Drive, email, or a cable. handitoff keeps the flow in the browser.",
       steps: [
         "Open handitoff.io on Windows.",
         "Scan the QR code with the iPhone camera.",
@@ -273,8 +272,7 @@ export const seoPages = {
     content: {
       label: "Android to Mac",
       title: "Transfer files from Android to Mac",
-      lead:
-        "Move photos, videos, screenshots, documents, and ZIP files from Android to Mac without installing another transfer app or uploading to Drive first.",
+      lead: "Move photos, videos, screenshots, documents, and ZIP files from Android to Mac without installing another transfer app or uploading to Drive first.",
       steps: [
         "Open handitoff.io on your Mac.",
         "Scan the QR code from Chrome on Android.",
@@ -306,8 +304,7 @@ export const seoPages = {
     content: {
       label: "AirDrop alternative",
       title: "AirDrop alternative for any device",
-      lead:
-        "When your devices are mixed, handitoff gives you a simple browser flow: open, scan, transfer.",
+      lead: "When your devices are mixed, handitoff gives you a simple browser flow: open, scan, transfer.",
       steps: [
         "Open handitoff.io on one device.",
         "Scan the QR code from the other device.",
@@ -339,8 +336,7 @@ export const seoPages = {
     content: {
       label: "Large files",
       title: "Send large files between devices",
-      lead:
-        "Sometimes you do not need cloud storage. You just need a large file on another device.",
+      lead: "Sometimes you do not need cloud storage. You just need a large file on another device.",
       sections: [
         {
           heading: "For videos, ZIPs, PDFs, and project files",
@@ -373,15 +369,8 @@ export const seoPages = {
     content: {
       label: "No install",
       title: "Transfer files without installing an app",
-      lead:
-        "You should not need another app, account, app store flow, or browser extension just to move a file.",
-      steps: [
-        "Open handitoff.io.",
-        "Scan the QR code.",
-        "Choose files.",
-        "Transfer.",
-        "Leave.",
-      ],
+      lead: "You should not need another app, account, app store flow, or browser extension just to move a file.",
+      steps: ["Open handitoff.io.", "Scan the QR code.", "Choose files.", "Transfer.", "Leave."],
       sections: [
         {
           heading: "Useful for temporary transfers",
@@ -407,8 +396,7 @@ export const seoPages = {
     content: {
       label: "Questions",
       title: "FAQ",
-      lead:
-        "Common questions about handitoff, browser file transfer, direct connections, relays, privacy, file size, and device support.",
+      lead: "Common questions about handitoff, browser file transfer, direct connections, relays, privacy, file size, and device support.",
       sections: [],
       faq: faqPageItems,
       related: allRelated.filter((link) => link.href !== "/faq"),

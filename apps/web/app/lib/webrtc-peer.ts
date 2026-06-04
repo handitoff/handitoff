@@ -175,7 +175,11 @@ export class WebRtcPeer {
           localCandidateId?: string;
           remoteCandidateId?: string;
         };
-        if (s.type === "candidate-pair" && s.nominated === true && s.localCandidateId !== undefined) {
+        if (
+          s.type === "candidate-pair" &&
+          s.nominated === true &&
+          s.localCandidateId !== undefined
+        ) {
           const local = stats.get(s.localCandidateId) as { candidateType?: string } | undefined;
           const remote =
             s.remoteCandidateId === undefined

@@ -104,7 +104,10 @@ export function SeoLandingPage({ content }: { content: SeoLandingPageContent }) 
         ) : null}
 
         {content.related ? (
-          <section className="border-t border-zinc-900 px-6 pb-24 pt-16 md:px-12" aria-label="Related pages">
+          <section
+            className="border-t border-zinc-900 px-6 pb-24 pt-16 md:px-12"
+            aria-label="Related pages"
+          >
             <div className="mx-auto max-w-6xl">
               <h2 className="mb-8 font-display text-xl lowercase tracking-tight text-zinc-50">
                 Related ways to use handitoff

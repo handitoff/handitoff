@@ -32,13 +32,7 @@ export function NewHandoffTicket({ deviceName }: { deviceName: string }) {
   );
 }
 
-function NewHandoffOverlay({
-  deviceName,
-  onClose,
-}: {
-  deviceName: string;
-  onClose: () => void;
-}) {
+function NewHandoffOverlay({ deviceName, onClose }: { deviceName: string; onClose: () => void }) {
   const navigate = useNavigate();
   const identity = useMemo(() => getBrowserDeviceIdentity(), []);
   const socketRef = useRef<HanditoffWebSocketClient | undefined>(undefined);
@@ -322,7 +316,11 @@ function NewHandoffOverlay({
           <button type="button" className="l-ticket-btn" onClick={approvePeer}>
             Approve {pendingPeer.label}
           </button>
-          <button type="button" className="l-ticket-btn l-ticket-btn--secondary" onClick={rejectPeer}>
+          <button
+            type="button"
+            className="l-ticket-btn l-ticket-btn--secondary"
+            onClick={rejectPeer}
+          >
             Reject
           </button>
         </div>

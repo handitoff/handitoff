@@ -168,10 +168,7 @@ export default function AdminAnalytics() {
 
       <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-9">
         {cards.map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-xl border border-zinc-800 bg-zinc-900 p-4"
-          >
+          <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
             <span className="text-xs text-zinc-500">{label}</span>
             <strong className="mt-2 block font-display text-2xl tracking-tight text-zinc-50">
               {value}
@@ -220,10 +217,7 @@ function Panel({
 }) {
   return (
     <section
-      className={cn(
-        "rounded-xl border border-zinc-800 bg-zinc-900 p-4",
-        wide && "lg:col-span-3",
-      )}
+      className={cn("rounded-xl border border-zinc-800 bg-zinc-900 p-4", wide && "lg:col-span-3")}
     >
       <h2 className="mb-3 font-display text-lg lowercase tracking-tight text-zinc-50">{title}</h2>
       {children}

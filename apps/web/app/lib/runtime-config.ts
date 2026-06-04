@@ -1,5 +1,8 @@
 import { loadPublicConfig, type PublicConfig } from "@handitoff/config";
-import { DEFAULT_MAX_FILE_SIZE_BYTES, DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES } from "@handitoff/config";
+import {
+  DEFAULT_MAX_FILE_SIZE_BYTES,
+  DEFAULT_MAX_TOTAL_TRANSFER_SIZE_BYTES,
+} from "@handitoff/config";
 
 function defaultPublicConfig(): PublicConfig {
   const browserOrigin = typeof window === "undefined" ? undefined : window.location.origin;

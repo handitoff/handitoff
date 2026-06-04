@@ -80,11 +80,7 @@ export function FeedbackModal({ type, sessionId, debugInfo, onClose }: FeedbackM
         ) : (
           <>
             {!isError ? (
-              <div
-                className="flex gap-1.5"
-                onMouseLeave={() => setHovered(0)}
-                aria-label="Rating"
-              >
+              <div className="flex gap-1.5" onMouseLeave={() => setHovered(0)} aria-label="Rating">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
                     key={star}
@@ -171,9 +167,7 @@ export function FeedbackModal({ type, sessionId, debugInfo, onClose }: FeedbackM
                 onChange={(e) => setMessage(e.target.value)}
                 maxLength={800}
                 rows={3}
-                placeholder={
-                  isError ? "What were you trying to do?" : "Tell us what you think…"
-                }
+                placeholder={isError ? "What were you trying to do?" : "Tell us what you think…"}
               />
             </div>
 
@@ -181,11 +175,7 @@ export function FeedbackModal({ type, sessionId, debugInfo, onClose }: FeedbackM
               <Button variant="secondary" type="button" onClick={onClose}>
                 {isError ? "Dismiss" : "Cancel"}
               </Button>
-              <Button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!isError && rating === 0}
-              >
+              <Button type="button" onClick={handleSubmit} disabled={!isError && rating === 0}>
                 {submitLabel}
               </Button>
             </DialogFooter>

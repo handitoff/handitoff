@@ -150,7 +150,10 @@ function ToClientExperience() {
           </div>
 
           {/* Connector */}
-          <div className="flex items-center justify-center font-mono text-2xl text-zinc-600" aria-hidden="true">
+          <div
+            className="flex items-center justify-center font-mono text-2xl text-zinc-600"
+            aria-hidden="true"
+          >
             <span className="hidden lg:inline">→</span>
             <span className="lg:hidden">↓</span>
           </div>
@@ -379,7 +382,10 @@ function ToProTeaser() {
 
         <ul className="grid grid-cols-1 gap-px self-start overflow-hidden rounded-xl border border-zinc-800 bg-zinc-800 sm:grid-cols-2">
           {features.map((f) => (
-            <li key={f} className="flex items-center gap-3 bg-zinc-950 px-5 py-4 text-sm text-zinc-200">
+            <li
+              key={f}
+              className="flex items-center gap-3 bg-zinc-950 px-5 py-4 text-sm text-zinc-200"
+            >
               <span className="text-zinc-50" aria-hidden="true">
                 ✓
               </span>

@@ -300,7 +300,10 @@ function LHero() {
           window.sessionStorage.setItem("handitoff.connectedCode", current.publicCode ?? "");
           window.sessionStorage.setItem("handitoff.role", "host");
           if (message.limits !== undefined) {
-            window.sessionStorage.setItem("handitoff.sessionLimits", JSON.stringify(message.limits));
+            window.sessionStorage.setItem(
+              "handitoff.sessionLimits",
+              JSON.stringify(message.limits),
+            );
           }
           trackEvent("session_peer_connected", undefined, { sessionId: current.sessionId });
           navigate(`/s/${current.publicCode ?? ""}`);

@@ -12,9 +12,7 @@ describe("analytics sinks", () => {
   it("supports disabled no-op analytics", () => {
     const sink = new NoopAnalyticsSink();
     expect(sink.isEnabled()).toBe(false);
-    expect(() =>
-      sink.record({ eventName: "page_view", anonymousId: "anonymous-1" }),
-    ).not.toThrow();
+    expect(() => sink.record({ eventName: "page_view", anonymousId: "anonymous-1" })).not.toThrow();
   });
 
   it("records normalized in-memory events", () => {
