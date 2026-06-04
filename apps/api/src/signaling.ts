@@ -8,11 +8,16 @@ import {
 
 import { FixedWindowRateLimiter } from "./rate-limits.js";
 import type { SessionStore, StoredSession } from "./session-store.js";
-import type { AccountPlan } from "./account-store.js";
+import type { AccountDevice, AccountPlan, AccountStore } from "./account-store.js";
+
+export type SignalingAccountUser = {
+  id: string;
+  plan: AccountPlan;
+};
 
 export type SignalingSocket = {
   readonly id: string;
-  readonly accountPlan?: AccountPlan;
+  readonly accountUser?: SignalingAccountUser | undefined;
   send(message: ServerMessage): void;
   close(code?: number, reason?: string): void;
   onMessage(handler: (raw: string) => void): void;
@@ -22,6 +27,7 @@ export type SignalingSocket = {
 export type SignalingHubOptions = {
   config: ServerConfig;
   store: SessionStore;
+  accountStore?: AccountStore;
   rateLimiter?: FixedWindowRateLimiter;
   now?: () => number;
   heartbeatTimeoutMs?: number;
@@ -29,11 +35,12 @@ export type SignalingHubOptions = {
 
 type ConnectionState = {
   socket: SignalingSocket;
-  accountPlan?: AccountPlan;
+  accountUser?: SignalingAccountUser;
   deviceId?: string;
   deviceLabel?: string;
   sessionId?: string;
   role?: "host" | "guest";
+  accountDeviceRegistered: boolean;
   approved: boolean;
   lastSeenAt: number;
 };
@@ -46,19 +53,33 @@ type PendingJoin = {
   guestSocketId: string;
 };
 
+type PendingAccountHandoff = {
+  requestId: string;
+  sessionId: string;
+  publicCode: string;
+  fromDeviceId: string;
+  fromDeviceLabel: string;
+  fromSocketId: string;
+  targetDeviceId: string;
+  targetSocketId: string;
+};
+
 export class SignalingHub {
   private readonly config: ServerConfig;
   private readonly store: SessionStore;
+  private readonly accountStore: AccountStore | undefined;
   private readonly rateLimiter: FixedWindowRateLimiter;
   private readonly now: () => number;
   private readonly heartbeatTimeoutMs: number;
   private readonly connections = new Map<string, ConnectionState>();
   private readonly connectionIdsByDevice = new Map<string, string>();
   private readonly pendingJoinsBySession = new Map<string, PendingJoin>();
+  private readonly pendingAccountHandoffsByRequest = new Map<string, PendingAccountHandoff>();
 
   public constructor(options: SignalingHubOptions) {
     this.config = options.config;
     this.store = options.store;
+    this.accountStore = options.accountStore;
     this.rateLimiter =
       options.rateLimiter ??
       new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now });
@@ -69,7 +90,8 @@ export class SignalingHub {
   public addSocket(socket: SignalingSocket): void {
     this.connections.set(socket.id, {
       socket,
-      ...(socket.accountPlan === undefined ? {} : { accountPlan: socket.accountPlan }),
+      ...(socket.accountUser === undefined ? {} : { accountUser: socket.accountUser }),
+      accountDeviceRegistered: false,
       approved: false,
       lastSeenAt: this.now(),
     });
@@ -122,6 +144,21 @@ export class SignalingHub {
     this.sweepHeartbeats();
 
     switch (message.type) {
+      case "device:register":
+        await this.registerAccountDevice(connection, message);
+        return;
+      case "device:heartbeat":
+        await this.heartbeatAccountDevice(connection, message);
+        return;
+      case "account-handoff:start":
+        await this.startAccountHandoff(connection, message);
+        return;
+      case "account-handoff:accept":
+        await this.acceptAccountHandoff(connection, message);
+        return;
+      case "account-handoff:reject":
+        await this.rejectAccountHandoff(connection, message);
+        return;
       case "session:create":
         await this.createSession(connection, message);
         return;
@@ -185,6 +222,220 @@ export class SignalingHub {
       joinUrl: new URL(`/join/${session.publicCode}`, this.config.publicConfig.appUrl).toString(),
       expiresAt: session.expiresAt,
       ...(session.limits === undefined ? {} : { limits: session.limits }),
+    });
+  }
+
+  private async registerAccountDevice(
+    connection: ConnectionState,
+    message: Extract<ClientMessage, { type: "device:register" }>,
+  ): Promise<void> {
+    if (connection.accountUser === undefined || this.accountStore === undefined) {
+      this.sendError(connection, "not_authorized", "Sign in is required.");
+      return;
+    }
+    if (!this.bindDevice(connection, message.deviceId, message.deviceLabel)) {
+      return;
+    }
+
+    const browser = readMetadata(message.browser);
+    const os = readMetadata(message.os);
+    const deviceType = readMetadata(message.deviceType);
+    const device = await this.accountStore.upsertDevice({
+      id: message.deviceId,
+      userId: connection.accountUser.id,
+      label: readLabel(message.deviceLabel, "This device"),
+      ...(browser === undefined ? {} : { browser }),
+      ...(os === undefined ? {} : { os }),
+      ...(deviceType === undefined ? {} : { deviceType }),
+      now: new Date(this.now()),
+    });
+    connection.deviceLabel = device.label;
+    connection.accountDeviceRegistered = true;
+    await this.broadcastDeviceList(connection.accountUser.id);
+  }
+
+  private async heartbeatAccountDevice(
+    connection: ConnectionState,
+    message: Extract<ClientMessage, { type: "device:heartbeat" }>,
+  ): Promise<void> {
+    if (
+      connection.accountUser === undefined ||
+      this.accountStore === undefined ||
+      connection.deviceId !== message.deviceId
+    ) {
+      this.sendError(connection, "not_authorized", "Device is not registered on this socket.");
+      return;
+    }
+    connection.lastSeenAt = this.now();
+    await this.accountStore.touchDevice(
+      connection.accountUser.id,
+      message.deviceId,
+      new Date(this.now()),
+    );
+    await this.broadcastDeviceList(connection.accountUser.id);
+  }
+
+  private async startAccountHandoff(
+    connection: ConnectionState,
+    message: Extract<ClientMessage, { type: "account-handoff:start" }>,
+  ): Promise<void> {
+    if (connection.accountUser === undefined || this.accountStore === undefined) {
+      this.sendError(connection, "not_authorized", "Sign in is required.");
+      return;
+    }
+    if (message.targetDeviceId === message.deviceId) {
+      this.sendError(connection, "invalid_device_id", "Target device must be a different device.");
+      return;
+    }
+    if (!this.bindDevice(connection, message.deviceId, message.deviceLabel)) {
+      return;
+    }
+
+    const target = this.findAccountDeviceConnection(
+      connection.accountUser.id,
+      message.targetDeviceId,
+    );
+    if (target === undefined) {
+      this.sendError(connection, "device_not_found", "Target device is not online.");
+      return;
+    }
+
+    const activeSessions = await this.store.countActiveByIp("websocket");
+    if (activeSessions >= this.config.rateLimits.maxActiveSessionsPerIp) {
+      this.sendError(connection, "rate_limited", "Too many active sessions for this IP address.");
+      return;
+    }
+
+    const accountLimits = this.accountLimitsFor(connection);
+    const limits = accountLimits ?? this.config.publicConfig.limits;
+    const fromDeviceLabel = readLabel(message.deviceLabel ?? connection.deviceLabel, "This device");
+    const session = await this.store.create({
+      hostDeviceId: message.deviceId,
+      hostLabel: fromDeviceLabel,
+      hostIpKey: "websocket",
+      ttlSeconds: limits.unpairedSessionTtlSeconds,
+      ...(accountLimits === undefined ? {} : { limits: accountLimits }),
+    });
+    const requestId = message.requestId ?? globalThis.crypto.randomUUID();
+    connection.sessionId = session.id;
+    connection.role = "host";
+    connection.approved = true;
+    this.pendingAccountHandoffsByRequest.set(requestId, {
+      requestId,
+      sessionId: session.id,
+      publicCode: session.publicCode,
+      fromDeviceId: message.deviceId,
+      fromDeviceLabel,
+      fromSocketId: connection.socket.id,
+      targetDeviceId: message.targetDeviceId,
+      targetSocketId: target.socket.id,
+    });
+
+    connection.socket.send({
+      type: "account-handoff:started",
+      requestId,
+      sessionId: session.id,
+      targetDeviceId: message.targetDeviceId,
+      publicCode: session.publicCode,
+      joinUrl: new URL(`/join/${session.publicCode}`, this.config.publicConfig.appUrl).toString(),
+      expiresAt: session.expiresAt,
+      ...(session.limits === undefined ? {} : { limits: session.limits }),
+    });
+    target.socket.send({
+      type: "account-handoff:request",
+      requestId,
+      sessionId: session.id,
+      fromDeviceId: message.deviceId,
+      fromDeviceLabel,
+      targetDeviceId: message.targetDeviceId,
+      ...(session.limits === undefined ? {} : { limits: session.limits }),
+    });
+  }
+
+  private async acceptAccountHandoff(
+    connection: ConnectionState,
+    message: Extract<ClientMessage, { type: "account-handoff:accept" }>,
+  ): Promise<void> {
+    const pending = this.pendingAccountHandoffsByRequest.get(message.requestId);
+    if (
+      pending === undefined ||
+      pending.targetSocketId !== connection.socket.id ||
+      pending.targetDeviceId !== message.deviceId
+    ) {
+      this.sendError(connection, "peer_disconnected", "Handoff request is no longer pending.");
+      return;
+    }
+
+    const session = await this.store.getById(pending.sessionId, { includeExpired: true });
+    if (session === undefined) {
+      this.pendingAccountHandoffsByRequest.delete(message.requestId);
+      this.sendError(connection, "session_not_found", "Session not found.");
+      return;
+    }
+    if (session.status === "expired" || session.status === "ended") {
+      this.pendingAccountHandoffsByRequest.delete(message.requestId);
+      this.sendError(
+        connection,
+        session.status === "expired" ? "session_expired" : "session_ended",
+        session.status === "expired" ? "Session has expired." : "Session has ended.",
+      );
+      return;
+    }
+
+    const limits = session.limits ?? this.config.publicConfig.limits;
+    const updated = await this.store.attachGuest({
+      sessionId: pending.sessionId,
+      guestDeviceId: pending.targetDeviceId,
+      guestLabel: readLabel(connection.deviceLabel, "This device"),
+      ttlSeconds: limits.pairedSessionTtlSeconds,
+    });
+    if (updated === undefined) {
+      this.sendError(connection, "session_not_found", "Session not found.");
+      return;
+    }
+
+    const initiator = this.connections.get(pending.fromSocketId);
+    this.pendingAccountHandoffsByRequest.delete(message.requestId);
+    connection.sessionId = pending.sessionId;
+    connection.role = "guest";
+    connection.approved = true;
+    if (initiator !== undefined) {
+      initiator.approved = true;
+      initiator.socket.send({
+        type: "peer:connected",
+        peerDeviceId: pending.targetDeviceId,
+        ...(session.limits === undefined ? {} : { limits: session.limits }),
+      });
+    }
+    connection.socket.send({
+      type: "session:joined",
+      sessionId: pending.sessionId,
+      peerDeviceId: pending.fromDeviceId,
+      peerDeviceLabel: pending.fromDeviceLabel,
+      ...(session.limits === undefined ? {} : { limits: session.limits }),
+    });
+  }
+
+  private async rejectAccountHandoff(
+    connection: ConnectionState,
+    message: Extract<ClientMessage, { type: "account-handoff:reject" }>,
+  ): Promise<void> {
+    const pending = this.pendingAccountHandoffsByRequest.get(message.requestId);
+    if (
+      pending === undefined ||
+      pending.targetSocketId !== connection.socket.id ||
+      pending.targetDeviceId !== message.deviceId
+    ) {
+      this.sendError(connection, "peer_disconnected", "Handoff request is no longer pending.");
+      return;
+    }
+
+    this.pendingAccountHandoffsByRequest.delete(message.requestId);
+    await this.store.end(pending.sessionId, pending.fromDeviceId, "account_handoff_rejected");
+    this.connections.get(pending.fromSocketId)?.socket.send({
+      type: "account-handoff:rejected",
+      requestId: message.requestId,
+      reason: "rejected_by_target",
     });
   }
 
@@ -394,11 +645,7 @@ export class SignalingHub {
 
     this.pendingJoinsBySession.delete(message.sessionId);
     const limits = session.limits ?? this.config.publicConfig.limits;
-    await this.store.updateStatus(
-      message.sessionId,
-      "waiting",
-      limits.unpairedSessionTtlSeconds,
-    );
+    await this.store.updateStatus(message.sessionId, "waiting", limits.unpairedSessionTtlSeconds);
     this.connections
       .get(pending.guestSocketId)
       ?.socket.send({ type: "session:rejected", reason: "rejected_by_host" });
@@ -529,6 +776,19 @@ export class SignalingHub {
     deviceLabel: string | undefined,
     role: "host" | "guest",
   ): boolean {
+    if (!this.bindDevice(connection, deviceId, deviceLabel)) {
+      return false;
+    }
+
+    connection.role = role;
+    return true;
+  }
+
+  private bindDevice(
+    connection: ConnectionState,
+    deviceId: string,
+    deviceLabel: string | undefined,
+  ): boolean {
     if (connection.deviceId !== undefined && connection.deviceId !== deviceId) {
       this.sendError(
         connection,
@@ -549,8 +809,7 @@ export class SignalingHub {
     }
 
     connection.deviceId = deviceId;
-    connection.deviceLabel = readLabel(deviceLabel, role === "host" ? "Host" : "Guest");
-    connection.role = role;
+    connection.deviceLabel = readLabel(deviceLabel, connection.deviceLabel ?? "This device");
     connection.lastSeenAt = this.now();
     this.connectionIdsByDevice.set(deviceId, connection.socket.id);
     return true;
@@ -583,6 +842,28 @@ export class SignalingHub {
         peer.socket.send({ type: "peer:disconnected", peerDeviceId: connection.deviceId });
       }
     }
+
+    if (connection.accountUser !== undefined) {
+      void this.broadcastDeviceList(connection.accountUser.id);
+    }
+
+    for (const pending of [...this.pendingAccountHandoffsByRequest.values()]) {
+      if (pending.fromSocketId === socketId || pending.targetSocketId === socketId) {
+        this.pendingAccountHandoffsByRequest.delete(pending.requestId);
+        void this.store.end(
+          pending.sessionId,
+          pending.fromDeviceId,
+          "account_handoff_disconnected",
+        );
+        const peerSocketId =
+          pending.fromSocketId === socketId ? pending.targetSocketId : pending.fromSocketId;
+        this.connections.get(peerSocketId)?.socket.send({
+          type: "account-handoff:rejected",
+          requestId: pending.requestId,
+          reason: "peer_disconnected",
+        });
+      }
+    }
   }
 
   private findPeerConnection(connection: ConnectionState): ConnectionState | undefined {
@@ -605,6 +886,54 @@ export class SignalingHub {
     const socketId = this.connectionIdsByDevice.get(deviceId);
     const connection = socketId === undefined ? undefined : this.connections.get(socketId);
     return connection?.sessionId === sessionId ? connection : undefined;
+  }
+
+  private findAccountDeviceConnection(
+    userId: string,
+    deviceId: string,
+  ): ConnectionState | undefined {
+    const socketId = this.connectionIdsByDevice.get(deviceId);
+    const connection = socketId === undefined ? undefined : this.connections.get(socketId);
+    if (
+      connection?.accountUser?.id !== userId ||
+      !connection.accountDeviceRegistered ||
+      connection.deviceId !== deviceId
+    ) {
+      return undefined;
+    }
+    return connection;
+  }
+
+  private async broadcastDeviceList(userId: string): Promise<void> {
+    if (this.accountStore === undefined) {
+      return;
+    }
+    const devices = await this.accountStore.listDevices(userId);
+    for (const connection of this.connections.values()) {
+      if (connection.accountUser?.id === userId) {
+        connection.socket.send({
+          type: "device:list",
+          devices: devices.map((device) => this.devicePresence(device, connection.deviceId)),
+        });
+      }
+    }
+  }
+
+  private devicePresence(device: AccountDevice, currentDeviceId: string | undefined) {
+    const online = this.findAccountDeviceConnection(device.userId, device.id) !== undefined;
+    return {
+      id: device.id,
+      label: device.label,
+      ...(device.browser === undefined ? {} : { browser: device.browser }),
+      ...(device.os === undefined ? {} : { os: device.os }),
+      ...(device.deviceType === undefined ? {} : { deviceType: device.deviceType }),
+      ...(device.userAgent === undefined ? {} : { userAgent: device.userAgent }),
+      online,
+      thisDevice: currentDeviceId === device.id,
+      lastSeenAt: device.lastSeenAt.toISOString(),
+      createdAt: device.createdAt.toISOString(),
+      updatedAt: device.updatedAt.toISOString(),
+    };
   }
 
   private matchesConnection(
@@ -639,7 +968,9 @@ export class SignalingHub {
   private accountLimitsFor(
     connection: ConnectionState,
   ): (typeof PLAN_LIMITS)[AccountPlan] | undefined {
-    return connection.accountPlan === undefined ? undefined : PLAN_LIMITS[connection.accountPlan];
+    return connection.accountUser === undefined
+      ? undefined
+      : PLAN_LIMITS[connection.accountUser.plan];
   }
 
   private checkSignalingRate(connection: ConnectionState, sessionId: string): boolean {
@@ -658,4 +989,8 @@ export class SignalingHub {
 
 function readLabel(value: string | undefined, fallback: string): string {
   return value === undefined || value.trim() === "" ? fallback : value.trim().slice(0, 80);
+}
+
+function readMetadata(value: string | undefined): string | undefined {
+  return value === undefined || value.trim() === "" ? undefined : value.trim().slice(0, 80);
 }

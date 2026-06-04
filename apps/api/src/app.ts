@@ -24,6 +24,7 @@ import type { FeedbackInput, FeedbackStoreInterface } from "./feedback-store.js"
 import {
   AccountHandleTakenError,
   InMemoryAccountStore,
+  type AccountDevice,
   type AccountStore,
   type AccountUser,
   type UpdateAccountInput,
@@ -112,6 +113,18 @@ type UpdateReceiveSettingsBody = {
   requireSenderMessage?: unknown;
 };
 
+type RegisterDeviceBody = {
+  deviceId?: unknown;
+  label?: unknown;
+  browser?: unknown;
+  os?: unknown;
+  deviceType?: unknown;
+};
+
+type RenameDeviceBody = {
+  label?: unknown;
+};
+
 type GoogleTokenResponse = {
   access_token?: unknown;
 };
@@ -198,6 +211,36 @@ export function createApiApp(options: ApiAppOptions = {}) {
           await updateReceiveSettings(request, requestId, accountStore, config),
           request,
         );
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/account/devices") {
+        return withCors(
+          await listAccountDevices(request, requestId, accountStore, config),
+          request,
+        );
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/account/devices") {
+        return withCors(
+          await registerAccountDevice(request, requestId, accountStore, config),
+          request,
+        );
+      }
+
+      const deviceMatch = /^\/api\/account\/devices\/([^/]+)$/.exec(url.pathname);
+      if (deviceMatch?.[1] !== undefined) {
+        if (request.method === "PATCH") {
+          return withCors(
+            await renameAccountDevice(request, requestId, accountStore, config, deviceMatch[1]),
+            request,
+          );
+        }
+        if (request.method === "DELETE") {
+          return withCors(
+            await removeAccountDevice(request, requestId, accountStore, config, deviceMatch[1]),
+            request,
+          );
+        }
       }
 
       if (request.method === "POST" && url.pathname === "/api/sessions") {
@@ -686,6 +729,116 @@ async function updateReceiveSettings(
   return json(accountPayload(updated), { requestId });
 }
 
+async function listAccountDevices(
+  request: Request,
+  requestId: string,
+  accountStore: AccountStore,
+  config: ServerConfig,
+): Promise<Response> {
+  const user = await requireSignedInAccountUser(request, accountStore, config, requestId);
+  if (user instanceof Response) {
+    return user;
+  }
+  const currentDeviceId = new URL(request.url).searchParams.get("currentDeviceId") ?? undefined;
+  const devices = await accountStore.listDevices(user.id);
+  return json(
+    { devices: devices.map((device) => devicePayload(device, currentDeviceId, Date.now())) },
+    { requestId },
+  );
+}
+
+async function registerAccountDevice(
+  request: Request,
+  requestId: string,
+  accountStore: AccountStore,
+  config: ServerConfig,
+): Promise<Response> {
+  const user = await requireSignedInAccountUser(request, accountStore, config, requestId);
+  if (user instanceof Response) {
+    return user;
+  }
+  const body = await readJson<RegisterDeviceBody>(request, requestId);
+  if (body instanceof Response) {
+    return body;
+  }
+  if (!isDeviceId(body.deviceId)) {
+    return errorResponse(
+      "invalid_device",
+      "deviceId must be a non-empty string up to 128 characters.",
+      400,
+      requestId,
+    );
+  }
+
+  const label = readOptionalLabel(body.label, user.defaultDeviceName ?? "This device");
+  const userAgent = trimToLength(request.headers.get("user-agent") ?? undefined, 256);
+  const browser = readOptionalMetadata(body.browser);
+  const os = readOptionalMetadata(body.os);
+  const deviceType = readOptionalMetadata(body.deviceType);
+  const device = await accountStore.upsertDevice({
+    id: body.deviceId,
+    userId: user.id,
+    label,
+    ...(browser === undefined ? {} : { browser }),
+    ...(os === undefined ? {} : { os }),
+    ...(deviceType === undefined ? {} : { deviceType }),
+    ...(userAgent === undefined ? {} : { userAgent }),
+  });
+  return json(
+    { device: devicePayload(device, body.deviceId, Date.now()) },
+    { requestId, status: 201 },
+  );
+}
+
+async function renameAccountDevice(
+  request: Request,
+  requestId: string,
+  accountStore: AccountStore,
+  config: ServerConfig,
+  encodedDeviceId: string,
+): Promise<Response> {
+  const user = await requireSignedInAccountUser(request, accountStore, config, requestId);
+  if (user instanceof Response) {
+    return user;
+  }
+  const body = await readJson<RenameDeviceBody>(request, requestId);
+  if (body instanceof Response) {
+    return body;
+  }
+  if (!isNonEmptyString(body.label, 80)) {
+    return errorResponse(
+      "bad_json",
+      "label must be a non-empty string up to 80 characters.",
+      400,
+      requestId,
+    );
+  }
+  const deviceId = decodeURIComponent(encodedDeviceId);
+  const device = await accountStore.updateDeviceLabel(user.id, deviceId, body.label.trim());
+  if (device === undefined) {
+    return errorResponse("not_found", "Device not found.", 404, requestId);
+  }
+  return json({ device: devicePayload(device, deviceId, Date.now()) }, { requestId });
+}
+
+async function removeAccountDevice(
+  request: Request,
+  requestId: string,
+  accountStore: AccountStore,
+  config: ServerConfig,
+  encodedDeviceId: string,
+): Promise<Response> {
+  const user = await requireSignedInAccountUser(request, accountStore, config, requestId);
+  if (user instanceof Response) {
+    return user;
+  }
+  const removed = await accountStore.removeDevice(user.id, decodeURIComponent(encodedDeviceId));
+  if (!removed) {
+    return errorResponse("not_found", "Device not found.", 404, requestId);
+  }
+  return json({ ok: true }, { requestId });
+}
+
 async function recordAnalyticsEvent(
   request: Request,
   requestId: string,
@@ -855,7 +1008,7 @@ function withCors(response: Response, request: Request): Response {
   const headers = new Headers(response.headers);
   headers.set("access-control-allow-origin", origin ?? "*");
   headers.set("vary", "origin");
-  headers.set("access-control-allow-methods", "GET,POST,PATCH,OPTIONS");
+  headers.set("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
   headers.set(
     "access-control-allow-headers",
     "authorization,content-type,x-admin-token,x-request-id",
@@ -918,6 +1071,19 @@ async function requireAccountUser(
   return accountStore.getUserBySession(sessionId);
 }
 
+async function requireSignedInAccountUser(
+  request: Request,
+  accountStore: AccountStore,
+  config: ServerConfig,
+  requestId: string,
+): Promise<AccountUser | Response> {
+  const user = await requireAccountUser(request, accountStore, config);
+  if (user === undefined) {
+    return errorResponse("forbidden", "Sign in is required.", 401, requestId);
+  }
+  return user;
+}
+
 function accountPayload(user: AccountUser) {
   const receiveLinkEnabled = canUseReceiveLink(user);
   return {
@@ -944,6 +1110,23 @@ function accountPayload(user: AccountUser) {
     requests: [],
     liveReceive: [],
     sessions: [],
+  };
+}
+
+function devicePayload(device: AccountDevice, currentDeviceId: string | undefined, now: number) {
+  const lastSeenAt = device.lastSeenAt.getTime();
+  return {
+    id: device.id,
+    label: device.label,
+    ...(device.browser === undefined ? {} : { browser: device.browser }),
+    ...(device.os === undefined ? {} : { os: device.os }),
+    ...(device.deviceType === undefined ? {} : { deviceType: device.deviceType }),
+    ...(device.userAgent === undefined ? {} : { userAgent: device.userAgent }),
+    online: now - lastSeenAt <= 45_000,
+    thisDevice: currentDeviceId === device.id,
+    lastSeenAt: device.lastSeenAt.toISOString(),
+    createdAt: device.createdAt.toISOString(),
+    updatedAt: device.updatedAt.toISOString(),
   };
 }
 
@@ -1096,6 +1279,10 @@ function emptyDashboard() {
 
 function readOptionalLabel(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, 80) : fallback;
+}
+
+function readOptionalMetadata(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, 80) : undefined;
 }
 
 function trimToLength(value: string | undefined, maxLength: number): string | undefined {

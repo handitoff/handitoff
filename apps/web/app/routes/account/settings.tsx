@@ -28,16 +28,12 @@ const PROVIDER_LABEL: Record<OAuthProvider, string> = {
 export default function AccountSettings() {
   const { user } = useAccount();
   const [name, setName] = useState(user.name);
-  const [deviceName, setDeviceName] = useState(user.defaultDeviceName ?? "");
   const [saved, setSaved] = useState(false);
 
-  const dirty = name !== user.name || deviceName !== (user.defaultDeviceName ?? "");
+  const dirty = name !== user.name;
 
   const save = () => {
-    updateAccountProfile({
-      name,
-      defaultDeviceName: deviceName.trim() === "" ? null : deviceName,
-    })
+    updateAccountProfile({ name })
       .then(() => {
         setSaved(true);
         window.setTimeout(() => setSaved(false), 1800);
@@ -50,7 +46,7 @@ export default function AccountSettings() {
       <SectionHeading
         eyebrow="Settings"
         title="Account settings"
-        description="Your profile, default device name, and connected sign-in."
+        description="Your profile and connected sign-in."
       />
 
       {/* Profile */}
@@ -74,17 +70,6 @@ export default function AccountSettings() {
             <p className="text-xs text-zinc-500">
               From your {PROVIDER_LABEL[user.provider]} account. Click to reveal.
             </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="device">Default device name</Label>
-            <Input
-              id="device"
-              value={deviceName}
-              placeholder="e.g. Tiago's laptop"
-              onChange={(e) => setDeviceName(e.target.value)}
-            />
-            <p className="text-xs text-zinc-500">How other devices see you during a transfer.</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -158,15 +143,7 @@ export default function AccountSettings() {
 
 // Email is blurred by default and revealed on click — keeps it off-screen for
 // shoulder-surfers until the owner deliberately shows it.
-function MaskedEmail({
-  email,
-  id,
-  className,
-}: {
-  email: string;
-  id?: string;
-  className?: string;
-}) {
+function MaskedEmail({ email, id, className }: { email: string; id?: string; className?: string }) {
   const [revealed, setRevealed] = useState(false);
   return (
     <span

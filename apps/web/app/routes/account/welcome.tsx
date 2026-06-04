@@ -12,6 +12,7 @@ import {
   updateAccountProfile,
   type AccountUser,
 } from "../../lib/account";
+import { getDeviceRegistration, registerDevice } from "../../lib/devices";
 import { seoMeta } from "../../lib/seo";
 
 export function meta() {
@@ -38,7 +39,8 @@ export default function AccountWelcome() {
       .then((data) => {
         setUser(data.user);
         setHandle(data.user.handle ?? "");
-        setDeviceName(data.user.defaultDeviceName ?? "");
+        // Pre-fill with the device's inferred name; the user can refine it.
+        setDeviceName(data.user.defaultDeviceName ?? getDeviceRegistration().label);
       })
       .catch(() => navigate("/account"));
     return () => controller.abort();
@@ -46,10 +48,14 @@ export default function AccountWelcome() {
 
   const finish = () => {
     setSaving(true);
-    updateAccountProfile({
-      handle: handle.trim() === "" ? null : normalizeHandleInput(handle),
-      defaultDeviceName: deviceName.trim() === "" ? null : deviceName,
-    })
+    const trimmedDeviceName = deviceName.trim();
+    Promise.all([
+      updateAccountProfile({ handle: handle.trim() === "" ? null : normalizeHandleInput(handle) }),
+      // Apply the chosen name to this device, not an account-wide default.
+      trimmedDeviceName === ""
+        ? Promise.resolve()
+        : registerDevice(getDeviceRegistration(trimmedDeviceName)),
+    ])
       .then(() => navigate("/account/receive"))
       .catch(() => setSaving(false));
   };
@@ -121,7 +127,7 @@ export default function AccountWelcome() {
             <Step
               eyebrow="Almost there"
               title="Name this device"
-              description="This is how other devices will see you during transfers."
+              description="This is how it'll appear when you start handoffs between your signed-in devices. When you sign in on another device, you can hand files between them without scanning a QR."
             >
               <input
                 value={deviceName}

@@ -6,6 +6,7 @@ export default [
   route("account", "routes/account/layout.tsx", [
     index("routes/account/overview.tsx"),
     route("receive", "routes/account/receive.tsx"),
+    route("devices", "routes/account/devices.tsx"),
     route("sessions", "routes/account/sessions.tsx"),
     route("plan", "routes/account/plan.tsx"),
     route("settings", "routes/account/settings.tsx"),

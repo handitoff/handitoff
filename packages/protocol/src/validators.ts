@@ -18,6 +18,19 @@ export function validateClientMessage(value: unknown): ValidationResult<ClientMe
   }
 
   switch (value.type) {
+    case "device:register":
+      return requireFields(value, ["deviceId"], {
+        optionalStrings: ["deviceLabel", "browser", "os", "deviceType"],
+      });
+    case "device:heartbeat":
+      return requireFields(value, ["deviceId"]);
+    case "account-handoff:start":
+      return requireFields(value, ["deviceId", "targetDeviceId"], {
+        optionalStrings: ["requestId", "deviceLabel"],
+      });
+    case "account-handoff:accept":
+    case "account-handoff:reject":
+      return requireFields(value, ["requestId", "deviceId"]);
     case "session:create":
       return requireFields(value, ["deviceId"], {
         optionalStrings: ["deviceLabel"],
@@ -56,6 +69,33 @@ export function validateServerMessage(value: unknown): ValidationResult<ServerMe
   }
 
   switch (value.type) {
+    case "device:list":
+      if (!Array.isArray(value.devices)) {
+        return invalid("devices", "devices must be an array.");
+      }
+      return ok(value as ServerMessage);
+    case "account-handoff:request":
+      return requireFields(value, [
+        "requestId",
+        "sessionId",
+        "fromDeviceId",
+        "fromDeviceLabel",
+        "targetDeviceId",
+      ]);
+    case "account-handoff:started":
+      if (!isString(value.publicCode) || !isPublicCode(value.publicCode)) {
+        return invalid("publicCode", "Public code is invalid.", "invalid_public_code");
+      }
+
+      return requireFields(
+        value,
+        ["requestId", "sessionId", "targetDeviceId", "publicCode", "joinUrl"],
+        {
+          numbers: ["expiresAt"],
+        },
+      );
+    case "account-handoff:rejected":
+      return requireFields(value, ["requestId", "reason"]);
     case "session:created":
       if (!isString(value.publicCode) || !isPublicCode(value.publicCode)) {
         return invalid("publicCode", "Public code is invalid.", "invalid_public_code");

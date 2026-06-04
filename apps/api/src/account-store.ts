@@ -22,6 +22,19 @@ export type AccountUser = {
   createdAt: Date;
 };
 
+export type AccountDevice = {
+  id: string;
+  userId: string;
+  label: string;
+  browser?: string;
+  os?: string;
+  deviceType?: string;
+  userAgent?: string;
+  lastSeenAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type UpsertOAuthUserInput = {
   provider: OAuthProvider;
   providerSubject: string;
@@ -43,6 +56,17 @@ export type UpdateReceiveSettingsInput = {
   requireSenderMessage?: boolean;
 };
 
+export type UpsertAccountDeviceInput = {
+  id: string;
+  userId: string;
+  label: string;
+  browser?: string;
+  os?: string;
+  deviceType?: string;
+  userAgent?: string;
+  now?: Date;
+};
+
 export interface AccountStore {
   upsertOAuthUser(input: UpsertOAuthUserInput): Promise<AccountUser>;
   createSession(userId: string, expiresAt: Date): Promise<string>;
@@ -50,6 +74,15 @@ export interface AccountStore {
   deleteSession(sessionId: string): Promise<void>;
   updateAccount(userId: string, input: UpdateAccountInput): Promise<AccountUser>;
   updateReceiveSettings(userId: string, input: UpdateReceiveSettingsInput): Promise<AccountUser>;
+  upsertDevice(input: UpsertAccountDeviceInput): Promise<AccountDevice>;
+  listDevices(userId: string): Promise<AccountDevice[]>;
+  updateDeviceLabel(
+    userId: string,
+    deviceId: string,
+    label: string,
+  ): Promise<AccountDevice | undefined>;
+  touchDevice(userId: string, deviceId: string, now?: Date): Promise<AccountDevice | undefined>;
+  removeDevice(userId: string, deviceId: string): Promise<boolean>;
   close(): Promise<void>;
 }
 
@@ -64,6 +97,7 @@ export class InMemoryAccountStore implements AccountStore {
   private readonly usersById = new Map<string, AccountUser>();
   private readonly userIdByProviderSubject = new Map<string, string>();
   private readonly sessionById = new Map<string, { userId: string; expiresAt: Date }>();
+  private readonly devicesById = new Map<string, AccountDevice>();
 
   public async upsertOAuthUser(input: UpsertOAuthUserInput): Promise<AccountUser> {
     const existingId = this.userIdByProviderSubject.get(input.providerSubject);
@@ -173,6 +207,79 @@ export class InMemoryAccountStore implements AccountStore {
     };
     this.usersById.set(userId, next);
     return next;
+  }
+
+  public async upsertDevice(input: UpsertAccountDeviceInput): Promise<AccountDevice> {
+    this.requireUser(input.userId);
+    const now = input.now ?? new Date();
+    const key = deviceKey(input.userId, input.id);
+    const existing = this.devicesById.get(key);
+    const device: AccountDevice = {
+      ...(existing ?? {
+        id: input.id,
+        userId: input.userId,
+        createdAt: now,
+        updatedAt: now,
+        lastSeenAt: now,
+      }),
+      userId: input.userId,
+      label: input.label,
+      ...(input.browser === undefined ? {} : { browser: input.browser }),
+      ...(input.os === undefined ? {} : { os: input.os }),
+      ...(input.deviceType === undefined ? {} : { deviceType: input.deviceType }),
+      ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
+      lastSeenAt: now,
+      updatedAt: now,
+    };
+    this.devicesById.set(key, device);
+    return device;
+  }
+
+  public async listDevices(userId: string): Promise<AccountDevice[]> {
+    this.requireUser(userId);
+    return [...this.devicesById.values()]
+      .filter((device) => device.userId === userId)
+      .sort((left, right) => right.lastSeenAt.getTime() - left.lastSeenAt.getTime());
+  }
+
+  public async updateDeviceLabel(
+    userId: string,
+    deviceId: string,
+    label: string,
+  ): Promise<AccountDevice | undefined> {
+    const key = deviceKey(userId, deviceId);
+    const existing = this.devicesById.get(key);
+    if (existing === undefined || existing.userId !== userId) {
+      return undefined;
+    }
+    const updated = { ...existing, label, updatedAt: new Date() };
+    this.devicesById.set(key, updated);
+    return updated;
+  }
+
+  public async touchDevice(
+    userId: string,
+    deviceId: string,
+    now = new Date(),
+  ): Promise<AccountDevice | undefined> {
+    const key = deviceKey(userId, deviceId);
+    const existing = this.devicesById.get(key);
+    if (existing === undefined || existing.userId !== userId) {
+      return undefined;
+    }
+    const updated = { ...existing, lastSeenAt: now, updatedAt: now };
+    this.devicesById.set(key, updated);
+    return updated;
+  }
+
+  public async removeDevice(userId: string, deviceId: string): Promise<boolean> {
+    const key = deviceKey(userId, deviceId);
+    const existing = this.devicesById.get(key);
+    if (existing === undefined || existing.userId !== userId) {
+      return false;
+    }
+    this.devicesById.delete(key);
+    return true;
   }
 
   public async close(): Promise<void> {
@@ -296,9 +403,115 @@ export class PrismaAccountStore implements AccountStore {
     return serializeUser(user);
   }
 
+  public async upsertDevice(input: UpsertAccountDeviceInput): Promise<AccountDevice> {
+    const now = input.now ?? new Date();
+    const device = await this.prisma.accountDevice.upsert({
+      where: { userId_id: { userId: input.userId, id: input.id } },
+      create: {
+        id: input.id,
+        userId: input.userId,
+        label: input.label,
+        browser: input.browser ?? null,
+        os: input.os ?? null,
+        deviceType: input.deviceType ?? null,
+        userAgent: input.userAgent ?? null,
+        lastSeenAt: now,
+      },
+      update: {
+        userId: input.userId,
+        label: input.label,
+        browser: input.browser ?? null,
+        os: input.os ?? null,
+        deviceType: input.deviceType ?? null,
+        userAgent: input.userAgent ?? null,
+        lastSeenAt: now,
+        removedAt: null,
+      },
+    });
+    return serializeDevice(device);
+  }
+
+  public async listDevices(userId: string): Promise<AccountDevice[]> {
+    const devices = await this.prisma.accountDevice.findMany({
+      where: { userId, removedAt: null },
+      orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }],
+    });
+    return devices.map(serializeDevice);
+  }
+
+  public async updateDeviceLabel(
+    userId: string,
+    deviceId: string,
+    label: string,
+  ): Promise<AccountDevice | undefined> {
+    const result = await this.prisma.accountDevice.updateMany({
+      where: { id: deviceId, userId, removedAt: null },
+      data: { label },
+    });
+    if (result.count === 0) {
+      return undefined;
+    }
+    const device = await this.prisma.accountDevice.findUnique({
+      where: { userId_id: { userId, id: deviceId } },
+    });
+    return device === null ? undefined : serializeDevice(device);
+  }
+
+  public async touchDevice(
+    userId: string,
+    deviceId: string,
+    now = new Date(),
+  ): Promise<AccountDevice | undefined> {
+    const result = await this.prisma.accountDevice.updateMany({
+      where: { id: deviceId, userId, removedAt: null },
+      data: { lastSeenAt: now },
+    });
+    if (result.count === 0) {
+      return undefined;
+    }
+    const device = await this.prisma.accountDevice.findUnique({
+      where: { userId_id: { userId, id: deviceId } },
+    });
+    return device === null ? undefined : serializeDevice(device);
+  }
+
+  public async removeDevice(userId: string, deviceId: string): Promise<boolean> {
+    const result = await this.prisma.accountDevice.updateMany({
+      where: { id: deviceId, userId, removedAt: null },
+      data: { removedAt: new Date() },
+    });
+    return result.count > 0;
+  }
+
   public async close(): Promise<void> {
     await this.prisma.$disconnect();
   }
+}
+
+function serializeDevice(row: {
+  id: string;
+  userId: string;
+  label: string;
+  browser: string | null;
+  os: string | null;
+  deviceType: string | null;
+  userAgent: string | null;
+  lastSeenAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}): AccountDevice {
+  return {
+    id: row.id,
+    userId: row.userId,
+    label: row.label,
+    ...(row.browser === null ? {} : { browser: row.browser }),
+    ...(row.os === null ? {} : { os: row.os }),
+    ...(row.deviceType === null ? {} : { deviceType: row.deviceType }),
+    ...(row.userAgent === null ? {} : { userAgent: row.userAgent }),
+    lastSeenAt: row.lastSeenAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
 }
 
 function serializeUser(row: {
@@ -337,6 +550,10 @@ function serializeUser(row: {
 
 function isAccountPlan(value: string): value is AccountPlan {
   return value === "free" || value === "account" || value === "pro";
+}
+
+function deviceKey(userId: string, deviceId: string): string {
+  return `${userId}:${deviceId}`;
 }
 
 function isPrismaUniqueConstraintError(error: unknown): boolean {

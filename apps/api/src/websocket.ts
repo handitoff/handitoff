@@ -46,10 +46,15 @@ async function handleWebSocketUpgradeAsync(
     ].join("\r\n"),
   );
 
-  const accountPlan = await readAccountPlan(request, options);
-  hub.addSocket(new NodeWebSocketConnection(socket, accountPlan));
+  const accountUser = await readAccountUser(request, options);
+  hub.addSocket(new NodeWebSocketConnection(socket, accountUser));
   return true;
 }
+
+export type WebSocketAccountUser = {
+  id: string;
+  plan: AccountPlan;
+};
 
 class NodeWebSocketConnection implements SignalingSocket {
   public readonly id = globalThis.crypto.randomUUID();
@@ -57,14 +62,14 @@ class NodeWebSocketConnection implements SignalingSocket {
   private closeHandler: (() => void) | undefined;
   private buffer = Buffer.alloc(0);
   private closed = false;
-  public readonly accountPlan?: AccountPlan;
+  public readonly accountUser?: WebSocketAccountUser;
 
   public constructor(
     private readonly socket: Socket,
-    accountPlan: AccountPlan | undefined,
+    accountUser: WebSocketAccountUser | undefined,
   ) {
-    if (accountPlan !== undefined) {
-      this.accountPlan = accountPlan;
+    if (accountUser !== undefined) {
+      this.accountUser = accountUser;
     }
     socket.on("data", (chunk) => this.read(chunk));
     socket.on("close", () => this.closeHandler?.());
@@ -119,10 +124,10 @@ class NodeWebSocketConnection implements SignalingSocket {
   }
 }
 
-async function readAccountPlan(
+async function readAccountUser(
   request: IncomingMessage,
   options: { config: ServerConfig; accountStore?: AccountStore },
-): Promise<AccountPlan | undefined> {
+): Promise<WebSocketAccountUser | undefined> {
   if (options.accountStore === undefined) {
     return undefined;
   }
@@ -130,7 +135,8 @@ async function readAccountPlan(
   if (sessionId === undefined) {
     return undefined;
   }
-  return (await options.accountStore.getUserBySession(sessionId))?.plan;
+  const user = await options.accountStore.getUserBySession(sessionId);
+  return user === undefined ? undefined : { id: user.id, plan: user.plan };
 }
 
 function readSignedSessionId(request: IncomingMessage, secret: string): string | undefined {

@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { ArrowRight } from "lucide-react";
 import { useAccount } from "../../components/account/context";
+import { useDevices } from "../../components/account/devices-context";
 import { SessionRow } from "../../components/account/session-row";
 import {
   CopyField,
@@ -52,12 +53,13 @@ export default function AccountOverview() {
 
       {/* At a glance */}
       <section className="flex flex-col gap-5">
-        <SectionHeading
-          title="At a glance"
-          description="What your account gives you right now."
-        />
+        <SectionHeading title="At a glance" description="What your account gives you right now." />
         <StatGrid>
-          <StatTile label="Plan" value={plan.label} hint={`${plan.maxFileSize} · ${plan.sessionDuration}`} />
+          <StatTile
+            label="Plan"
+            value={plan.label}
+            hint={`${plan.maxFileSize} · ${plan.sessionDuration}`}
+          />
           <StatTile
             label="Receive link"
             value={hasReceiveLink ? (receive.receiveMode ? "On" : "Off") : "Locked"}
@@ -74,9 +76,16 @@ export default function AccountOverview() {
             value={liveSessions.length}
             hint={liveSessions.length === 1 ? "1 live now" : `${liveSessions.length} live now`}
           />
-          <StatTile label="Devices per session" value={plan.maxDevices} hint={plan.maxConcurrentSenders} />
+          <StatTile
+            label="Devices per session"
+            value={plan.maxDevices}
+            hint={plan.maxConcurrentSenders}
+          />
         </StatGrid>
       </section>
+
+      {/* Your devices */}
+      <DevicesSummary />
 
       {/* Receive link summary */}
       <section className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -93,7 +102,11 @@ export default function AccountOverview() {
 
           {hasReceiveLink && user.handle !== undefined ? (
             <>
-              <CopyField prefix="handitoff.io/to/" value={user.handle} copyValue={receiveLinkFor(user.handle)} />
+              <CopyField
+                prefix="handitoff.io/to/"
+                value={user.handle}
+                copyValue={receiveLinkFor(user.handle)}
+              />
               <p className="text-sm leading-relaxed text-zinc-400">
                 {receive.receiveMode
                   ? "People with your link can request to send files while you're online."
@@ -167,6 +180,67 @@ export default function AccountOverview() {
         )}
       </section>
     </div>
+  );
+}
+
+// Compact "Your devices" glance: how many of the account's devices are online
+// and a one-tap handoff to the first available one.
+function DevicesSummary() {
+  const { devices, onlineTargets, startHandoff, outgoing } = useDevices();
+
+  if (devices.length === 0) {
+    return null;
+  }
+
+  const onlineCount = devices.filter((device) => device.online).length;
+  const primary = onlineTargets[0];
+
+  return (
+    <section className="flex flex-col gap-5">
+      <SectionHeading
+        title="Your devices"
+        description="Signed-in devices you can hand off to without scanning a QR."
+        action={
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/account/devices">Manage</Link>
+          </Button>
+        }
+      />
+      <Panel className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <OnlineDot online={onlineCount > 0} />
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-zinc-100">
+              {onlineCount === 0
+                ? "No other devices online"
+                : primary !== undefined
+                  ? `${primary.label} is online`
+                  : `${onlineCount} ${onlineCount === 1 ? "device" : "devices"} online`}
+            </span>
+            <span className="text-[13px] text-zinc-500">
+              {devices.length} {devices.length === 1 ? "device" : "devices"} on your account
+            </span>
+          </div>
+        </div>
+        {primary !== undefined ? (
+          <Button
+            size="sm"
+            type="button"
+            className="shrink-0"
+            onClick={() => startHandoff(primary)}
+            disabled={outgoing !== undefined}
+          >
+            {outgoing?.targetDeviceId === primary.id
+              ? "Requested…"
+              : `Start handoff with ${primary.label}`}
+          </Button>
+        ) : (
+          <Button asChild variant="secondary" size="sm" className="shrink-0">
+            <Link to="/account/devices">View devices</Link>
+          </Button>
+        )}
+      </Panel>
+    </section>
   );
 }
 

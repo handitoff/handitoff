@@ -117,6 +117,14 @@ function getClientMessageError(value: unknown): string | undefined {
   }
 
   switch (value.type) {
+    case "device:register":
+    case "device:heartbeat":
+      return requireString(value, "deviceId");
+    case "account-handoff:start":
+      return requireStrings(value, ["deviceId", "targetDeviceId"]);
+    case "account-handoff:accept":
+    case "account-handoff:reject":
+      return requireStrings(value, ["requestId", "deviceId"]);
     case "session:create":
       return requireString(value, "deviceId");
     case "session:join":
@@ -150,6 +158,30 @@ function isServerMessage(value: unknown): value is ServerMessage {
   }
 
   switch (value.type) {
+    case "device:list":
+      return Array.isArray(value.devices);
+    case "account-handoff:request":
+      return (
+        requireStrings(value, [
+          "requestId",
+          "sessionId",
+          "fromDeviceId",
+          "fromDeviceLabel",
+          "targetDeviceId",
+        ]) === undefined
+      );
+    case "account-handoff:started":
+      return (
+        requireStrings(value, [
+          "requestId",
+          "sessionId",
+          "targetDeviceId",
+          "publicCode",
+          "joinUrl",
+        ]) === undefined && typeof value.expiresAt === "number"
+      );
+    case "account-handoff:rejected":
+      return requireStrings(value, ["requestId", "reason"]) === undefined;
     case "session:created":
       return (
         requireStrings(value, ["sessionId", "publicCode", "joinUrl"]) === undefined &&

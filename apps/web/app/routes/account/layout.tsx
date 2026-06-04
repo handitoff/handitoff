@@ -4,6 +4,7 @@ import { NavLink, Outlet } from "react-router";
 import { AppShell } from "../../components/app-shell";
 import { SiteFooter } from "../../components/site-footer";
 import { NewHandoffTicket } from "../../components/account/new-handoff-ticket";
+import { DevicesProvider } from "../../components/account/devices-context";
 import { OnlineDot } from "../../components/account/ui";
 import type { AccountContextValue } from "../../components/account/context";
 import {
@@ -33,6 +34,7 @@ export function meta() {
 
 const TABS = [
   { to: "/account", label: "Overview", end: true },
+  { to: "/account/devices", label: "Devices", end: false },
   { to: "/account/receive", label: "Receive", end: false },
   { to: "/account/sessions", label: "Sessions", end: false },
   { to: "/account/plan", label: "Plan", end: false },
@@ -139,83 +141,85 @@ export default function AccountLayout() {
 
   return (
     <AppShell user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl }}>
-      <main className="flex-1">
-        {/* Identity band */}
-        <section className="border-b border-zinc-900 px-6 py-7 md:px-12">
-          <div className="mx-auto flex max-w-6xl flex-col gap-5">
-            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              Account
-            </p>
-            <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-3.5">
-                <Avatar user={user} />
-                <div className="flex flex-col gap-0.5">
-                  <div className="font-display text-lg leading-none tracking-tight text-zinc-50 lowercase">
-                    {user.name}
+      <DevicesProvider>
+        <main className="flex-1">
+          {/* Identity band */}
+          <section className="border-b border-zinc-900 px-6 py-7 md:px-12">
+            <div className="mx-auto flex max-w-6xl flex-col gap-5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Account
+              </p>
+              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3.5">
+                  <Avatar user={user} />
+                  <div className="flex flex-col gap-0.5">
+                    <div className="font-display text-lg leading-none tracking-tight text-zinc-50 lowercase">
+                      {user.name}
+                    </div>
+                    <div className="text-[13px] text-zinc-500">{user.email}</div>
                   </div>
-                  <div className="text-[13px] text-zinc-500">{user.email}</div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {user.handle !== undefined && (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950 py-1 pl-2.5 pr-3 font-mono text-[11px] text-zinc-300">
+                      <OnlineDot online={receive.receiveMode && receive.online} />
+                      {receiveLinkFor(user.handle)}
+                    </span>
+                  )}
+                  <span className="rounded-full border border-zinc-700 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-300">
+                    {plan.label} plan
+                  </span>
                 </div>
               </div>
+            </div>
+          </section>
 
-              <div className="flex flex-wrap items-center gap-2.5">
-                {user.handle !== undefined && (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950 py-1 pl-2.5 pr-3 font-mono text-[11px] text-zinc-300">
-                    <OnlineDot online={receive.receiveMode && receive.online} />
-                    {receiveLinkFor(user.handle)}
-                  </span>
-                )}
-                <span className="rounded-full border border-zinc-700 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-300">
-                  {plan.label} plan
-                </span>
+          {/* Tab navigation */}
+          <div className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/85 px-6 backdrop-blur md:px-12">
+            <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+              <nav
+                className="-mb-px flex items-center gap-1 overflow-x-auto"
+                aria-label="Account sections"
+              >
+                {TABS.map((tab) => (
+                  <NavLink
+                    key={tab.to}
+                    to={tab.to}
+                    end={tab.end}
+                    className={({ isActive }) =>
+                      cn(
+                        "whitespace-nowrap border-b-2 px-3 py-3.5 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
+                        isActive
+                          ? "border-zinc-50 text-zinc-50"
+                          : "border-transparent text-zinc-500 hover:text-zinc-200",
+                      )
+                    }
+                  >
+                    {tab.label}
+                  </NavLink>
+                ))}
+              </nav>
+              <div className="hidden py-2.5 sm:block">
+                <NewHandoffTicket deviceName={deviceName} />
               </div>
             </div>
           </div>
-        </section>
 
-        {/* Tab navigation */}
-        <div className="sticky top-0 z-30 border-b border-zinc-900 bg-zinc-950/85 px-6 backdrop-blur md:px-12">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-            <nav
-              className="-mb-px flex items-center gap-1 overflow-x-auto"
-              aria-label="Account sections"
-            >
-              {TABS.map((tab) => (
-                <NavLink
-                  key={tab.to}
-                  to={tab.to}
-                  end={tab.end}
-                  className={({ isActive }) =>
-                    cn(
-                      "whitespace-nowrap border-b-2 px-3 py-3.5 font-mono text-[11px] uppercase tracking-[0.18em] transition-colors",
-                      isActive
-                        ? "border-zinc-50 text-zinc-50"
-                        : "border-transparent text-zinc-500 hover:text-zinc-200",
-                    )
-                  }
-                >
-                  {tab.label}
-                </NavLink>
-              ))}
-            </nav>
-            <div className="hidden py-2.5 sm:block">
-              <NewHandoffTicket deviceName={deviceName} />
+          {/* Tab content */}
+          <div className="px-6 py-8 md:px-12 md:py-10">
+            <div className="mx-auto max-w-6xl">
+              <Outlet context={context} />
             </div>
           </div>
-        </div>
 
-        {/* Tab content */}
-        <div className="px-6 py-8 md:px-12 md:py-10">
-          <div className="mx-auto max-w-6xl">
-            <Outlet context={context} />
+          {/* New-handoff trigger for narrow screens, where it doesn't fit the tab row. */}
+          <div className="fixed bottom-5 right-5 z-40 sm:hidden">
+            <NewHandoffTicket deviceName={deviceName} />
           </div>
-        </div>
-
-        {/* New-handoff trigger for narrow screens, where it doesn't fit the tab row. */}
-        <div className="fixed bottom-5 right-5 z-40 sm:hidden">
-          <NewHandoffTicket deviceName={deviceName} />
-        </div>
-      </main>
-      <SiteFooter />
+        </main>
+        <SiteFooter />
+      </DevicesProvider>
     </AppShell>
   );
 }

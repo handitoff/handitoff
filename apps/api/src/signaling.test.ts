@@ -4,6 +4,7 @@ import type { ClientMessage, ServerMessage } from "@handitoff/protocol";
 
 import { FixedWindowRateLimiter } from "./rate-limits.js";
 import { SignalingHub, type SignalingSocket } from "./signaling.js";
+import { InMemoryAccountStore, type AccountStore } from "./account-store.js";
 import { InMemorySessionStore } from "./session-store.js";
 
 const config: ServerConfig = {
@@ -401,6 +402,121 @@ describe("signaling hub", () => {
 
     expect(last(guest)).toMatchObject({ type: "error", code: "rate_limited" });
   });
+
+  it("starts signed-in device handoffs only after target approval", async () => {
+    const accountStore = new InMemoryAccountStore();
+    const user = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-1",
+      email: "one@example.com",
+      name: "One",
+    });
+    const { hub, store } = createHarness({ accountStore });
+    const laptop = new FakeSocket("laptop-socket", { id: user.id, plan: user.plan });
+    const phone = new FakeSocket("phone-socket", { id: user.id, plan: user.plan });
+    hub.addSocket(laptop);
+    hub.addSocket(phone);
+
+    laptop.receiveJson({
+      type: "device:register",
+      deviceId: "laptop",
+      deviceLabel: "Work laptop",
+      browser: "Chrome",
+      os: "Windows",
+    });
+    phone.receiveJson({
+      type: "device:register",
+      deviceId: "phone",
+      deviceLabel: "Phone",
+      browser: "Safari",
+      os: "iOS",
+    });
+    await flush();
+
+    expect(last(laptop)).toMatchObject({
+      type: "device:list",
+      devices: expect.arrayContaining([
+        expect.objectContaining({ id: "laptop", online: true, thisDevice: true }),
+        expect.objectContaining({ id: "phone", online: true, thisDevice: false }),
+      ]),
+    });
+
+    laptop.receiveJson({
+      type: "account-handoff:start",
+      requestId: "req-1",
+      deviceId: "laptop",
+      targetDeviceId: "phone",
+      deviceLabel: "Work laptop",
+    });
+    await flush();
+    expect(laptop.sent).toContainEqual(
+      expect.objectContaining({
+        type: "account-handoff:started",
+        requestId: "req-1",
+        sessionId: "session-1",
+        targetDeviceId: "phone",
+      }),
+    );
+    expect(last(phone)).toMatchObject({
+      type: "account-handoff:request",
+      requestId: "req-1",
+      sessionId: "session-1",
+      fromDeviceId: "laptop",
+      fromDeviceLabel: "Work laptop",
+    });
+    await expect(store.getById("session-1")).resolves.toMatchObject({ status: "waiting" });
+
+    phone.receiveJson({
+      type: "account-handoff:accept",
+      requestId: "req-1",
+      deviceId: "phone",
+    });
+    await flush();
+    expect(last(phone)).toMatchObject({
+      type: "session:joined",
+      sessionId: "session-1",
+      peerDeviceId: "laptop",
+    });
+    expect(last(laptop)).toMatchObject({ type: "peer:connected", peerDeviceId: "phone" });
+    await expect(store.getById("session-1")).resolves.toMatchObject({
+      status: "connected",
+      guestDeviceId: "phone",
+    });
+  });
+
+  it("rejects signed-in handoff requests from devices outside the account", async () => {
+    const accountStore = new InMemoryAccountStore();
+    const first = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-1",
+      email: "one@example.com",
+      name: "One",
+    });
+    const second = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-2",
+      email: "two@example.com",
+      name: "Two",
+    });
+    const { hub } = createHarness({ accountStore });
+    const laptop = new FakeSocket("laptop-socket", { id: first.id, plan: first.plan });
+    const phone = new FakeSocket("phone-socket", { id: second.id, plan: second.plan });
+    hub.addSocket(laptop);
+    hub.addSocket(phone);
+    laptop.receiveJson({ type: "device:register", deviceId: "laptop", deviceLabel: "Laptop" });
+    phone.receiveJson({ type: "device:register", deviceId: "phone", deviceLabel: "Phone" });
+    await flush();
+
+    laptop.receiveJson({
+      type: "account-handoff:start",
+      requestId: "req-1",
+      deviceId: "laptop",
+      targetDeviceId: "phone",
+    });
+    await flush();
+
+    expect(last(laptop)).toMatchObject({ type: "error", code: "device_not_found" });
+  });
 });
 
 function createHarness(
@@ -409,6 +525,7 @@ function createHarness(
     codes?: string[];
     heartbeatTimeoutMs?: number;
     rateLimits?: ServerConfig["rateLimits"];
+    accountStore?: AccountStore;
   } = {},
 ) {
   let id = 0;
@@ -422,6 +539,7 @@ function createHarness(
     config:
       options.rateLimits === undefined ? config : { ...config, rateLimits: options.rateLimits },
     store,
+    ...(options.accountStore === undefined ? {} : { accountStore: options.accountStore }),
     rateLimiter: new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now }),
     ...(options.now === undefined ? {} : { now: options.now }),
     ...(options.heartbeatTimeoutMs === undefined
@@ -490,11 +608,19 @@ function flush(): Promise<void> {
 
 class FakeSocket implements SignalingSocket {
   public readonly sent: ServerMessage[] = [];
+  public readonly accountUser?: SignalingSocket["accountUser"];
   public closed = false;
   private messageHandler: ((raw: string) => void) | undefined;
   private closeHandler: (() => void) | undefined;
 
-  public constructor(public readonly id: string) {}
+  public constructor(
+    public readonly id: string,
+    accountUser?: SignalingSocket["accountUser"],
+  ) {
+    if (accountUser !== undefined) {
+      this.accountUser = accountUser;
+    }
+  }
 
   public send(message: ServerMessage): void {
     this.sent.push(message);

@@ -3,7 +3,50 @@ import type { PublicConfig } from "./types.js";
 
 export type SessionLimits = PublicConfig["limits"];
 
+export type AccountDevicePresence = {
+  id: string;
+  label: string;
+  browser?: string;
+  os?: string;
+  deviceType?: string;
+  userAgent?: string;
+  online: boolean;
+  thisDevice: boolean;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ClientMessage =
+  | {
+      type: "device:register";
+      deviceId: string;
+      deviceLabel?: string;
+      browser?: string;
+      os?: string;
+      deviceType?: string;
+    }
+  | {
+      type: "device:heartbeat";
+      deviceId: string;
+    }
+  | {
+      type: "account-handoff:start";
+      requestId?: string;
+      deviceId: string;
+      targetDeviceId: string;
+      deviceLabel?: string;
+    }
+  | {
+      type: "account-handoff:accept";
+      requestId: string;
+      deviceId: string;
+    }
+  | {
+      type: "account-handoff:reject";
+      requestId: string;
+      deviceId: string;
+    }
   | {
       type: "session:create";
       deviceId: string;
@@ -68,6 +111,34 @@ export type ClientMessage =
     };
 
 export type ServerMessage =
+  | {
+      type: "device:list";
+      devices: AccountDevicePresence[];
+    }
+  | {
+      type: "account-handoff:request";
+      requestId: string;
+      sessionId: string;
+      fromDeviceId: string;
+      fromDeviceLabel: string;
+      targetDeviceId: string;
+      limits?: SessionLimits;
+    }
+  | {
+      type: "account-handoff:started";
+      requestId: string;
+      sessionId: string;
+      targetDeviceId: string;
+      publicCode: string;
+      joinUrl: string;
+      expiresAt: number;
+      limits?: SessionLimits;
+    }
+  | {
+      type: "account-handoff:rejected";
+      requestId: string;
+      reason: string;
+    }
   | {
       type: "session:created";
       sessionId: string;

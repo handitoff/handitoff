@@ -11,6 +11,7 @@ export const PROTOCOL_ERROR_CODES = [
   "rate_limited",
   "peer_not_approved",
   "peer_disconnected",
+  "device_not_found",
   "webrtc_failed",
   "transfer_failed",
   "crypto_failed",

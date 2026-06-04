@@ -289,10 +289,7 @@ describe("api app", () => {
       name: "Two",
     });
     await accountStore.updateAccount(other.id, { handle: "taken" });
-    const sessionId = await accountStore.createSession(
-      user.id,
-      new Date(Date.now() + 60_000),
-    );
+    const sessionId = await accountStore.createSession(user.id, new Date(Date.now() + 60_000));
     const app = createTestApp({ accountStore });
 
     const response = await patchJson(
@@ -314,10 +311,7 @@ describe("api app", () => {
       email: "one@example.com",
       name: "One",
     });
-    const sessionId = await accountStore.createSession(
-      user.id,
-      new Date(Date.now() + 60_000),
-    );
+    const sessionId = await accountStore.createSession(user.id, new Date(Date.now() + 60_000));
     const app = createTestApp({ accountStore });
 
     const response = await patchJson(
@@ -329,6 +323,67 @@ describe("api app", () => {
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({ error: { code: "plan_required" } });
+  });
+
+  it("manages signed-in account devices", async () => {
+    const accountStore = new InMemoryAccountStore();
+    const user = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-1",
+      email: "one@example.com",
+      name: "One",
+    });
+    const sessionId = await accountStore.createSession(user.id, new Date(Date.now() + 60_000));
+    const cookie = signedSessionCookie(sessionId);
+    const app = createTestApp({ accountStore });
+
+    const registered = await postJson(
+      app,
+      "/api/account/devices",
+      { deviceId: "device-1", label: "Work laptop", browser: "Chrome", os: "Windows" },
+      { cookie },
+    );
+    expect(registered.status).toBe(201);
+    await expect(registered.json()).resolves.toMatchObject({
+      device: {
+        id: "device-1",
+        label: "Work laptop",
+        browser: "Chrome",
+        os: "Windows",
+        online: true,
+        thisDevice: true,
+      },
+    });
+
+    const listed = await app(
+      new Request("http://localhost/api/account/devices?currentDeviceId=device-1", {
+        headers: { cookie },
+      }),
+    );
+    expect(listed.status).toBe(200);
+    await expect(listed.json()).resolves.toMatchObject({
+      devices: [{ id: "device-1", label: "Work laptop", thisDevice: true }],
+    });
+
+    const renamed = await patchJson(
+      app,
+      "/api/account/devices/device-1",
+      { label: "Studio PC" },
+      { cookie },
+    );
+    expect(renamed.status).toBe(200);
+    await expect(renamed.json()).resolves.toMatchObject({
+      device: { id: "device-1", label: "Studio PC" },
+    });
+
+    const removed = await app(
+      new Request("http://localhost/api/account/devices/device-1", {
+        method: "DELETE",
+        headers: { cookie },
+      }),
+    );
+    expect(removed.status).toBe(200);
+    await expect(removed.json()).resolves.toEqual({ ok: true });
   });
 });
 
@@ -368,11 +423,16 @@ function postJson(
   app: ReturnType<typeof createTestApp>,
   path: string,
   body: unknown,
+  options: { cookie?: string } = {},
 ): Promise<Response> {
   return app(
     new Request(`http://localhost${path}`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.10" },
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "203.0.113.10",
+        ...(options.cookie === undefined ? {} : { cookie: options.cookie }),
+      },
       body: JSON.stringify(body),
     }),
   );

@@ -45,7 +45,11 @@ export function createNodeServer() {
 
   const getIceServers = config.turn ? buildTurnIceServersGetter(config.turn) : undefined;
 
-  const hub = new SignalingHub({ config, store });
+  const hub = new SignalingHub({
+    config,
+    store,
+    ...(accountStore === undefined ? {} : { accountStore }),
+  });
 
   const appOptions: ApiAppOptions = {
     config,
