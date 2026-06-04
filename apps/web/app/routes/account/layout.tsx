@@ -5,7 +5,7 @@ import { AppShell } from "../../components/app-shell";
 import { SiteFooter } from "../../components/site-footer";
 import { NewHandoffTicket } from "../../components/account/new-handoff-ticket";
 import { DevicesProvider } from "../../components/account/devices-context";
-import { OnlineDot } from "../../components/account/ui";
+import { MaskedEmail, OnlineDot } from "../../components/account/ui";
 import type { AccountContextValue } from "../../components/account/context";
 import {
   PLAN_ENTITLEMENTS,
@@ -162,7 +162,7 @@ export default function AccountLayout() {
                     <div className="font-display text-lg leading-none tracking-tight text-zinc-50 lowercase">
                       {user.name}
                     </div>
-                    <div className="text-[13px] text-zinc-500">{user.email}</div>
+                    <MaskedEmail email={user.email} className="w-fit text-[13px] text-zinc-500" />
                   </div>
                 </div>
 

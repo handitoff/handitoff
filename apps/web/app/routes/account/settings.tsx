@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useAccount } from "../../components/account/context";
-import { Panel, PanelLabel, SectionHeading } from "../../components/account/ui";
+import { MaskedEmail, Panel, PanelLabel, SectionHeading } from "../../components/account/ui";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { cn } from "../../lib/utils";
 import {
   Dialog,
   DialogClose,
@@ -138,35 +137,6 @@ export default function AccountSettings() {
         </div>
       </section>
     </div>
-  );
-}
-
-// Email is blurred by default and revealed on click — keeps it off-screen for
-// shoulder-surfers until the owner deliberately shows it.
-function MaskedEmail({ email, id, className }: { email: string; id?: string; className?: string }) {
-  const [revealed, setRevealed] = useState(false);
-  return (
-    <span
-      id={id}
-      role="button"
-      tabIndex={0}
-      aria-label={revealed ? "Hide email" : "Reveal email"}
-      title={revealed ? "Hide email" : "Click to reveal"}
-      onClick={() => setRevealed((value) => !value)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          setRevealed((value) => !value);
-        }
-      }}
-      className={cn(
-        "cursor-pointer rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-100",
-        !revealed && "select-none blur-sm",
-        className,
-      )}
-    >
-      {email}
-    </span>
   );
 }
 

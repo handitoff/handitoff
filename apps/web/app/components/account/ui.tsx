@@ -55,6 +55,42 @@ export function PanelLabel({ children }: { children: ReactNode }) {
   );
 }
 
+// Email is blurred by default and revealed on click, keeping it hidden until the owner shows it.
+export function MaskedEmail({
+  email,
+  id,
+  className,
+}: {
+  email: string;
+  id?: string;
+  className?: string;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <span
+      id={id}
+      role="button"
+      tabIndex={0}
+      aria-label={revealed ? "Hide email" : "Reveal email"}
+      title={revealed ? "Hide email" : "Click to reveal"}
+      onClick={() => setRevealed((value) => !value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setRevealed((value) => !value);
+        }
+      }}
+      className={cn(
+        "cursor-pointer rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-100",
+        !revealed && "select-none blur-sm",
+        className,
+      )}
+    >
+      {email}
+    </span>
+  );
+}
+
 // ── Stat tile ──────────────────────────────────────────────────────────────
 
 export function StatTile({
