@@ -30,7 +30,6 @@ import { seoMeta } from "../lib/seo";
 import { inferBrowser, inferOs, sizeBucketForBytes, trackEvent } from "../lib/analytics";
 import { HanditoffWebSocketClient } from "../lib/websocket-client";
 import { WebRtcPeer, type WebRtcPeerEvent } from "../lib/webrtc-peer";
-import type { FileOfferMessage } from "@handitoff/protocol";
 import type { FeedbackDebugInfo } from "../lib/feedback";
 
 type StoredSessionContext = {
@@ -54,12 +53,6 @@ type TransferAnalyticsState = {
   startedFileIds: Set<string>;
   completedFileIds: Set<string>;
   failedFileIds: Set<string>;
-};
-
-type PendingIncomingOffer = {
-  fileCount: number;
-  totalSize: number;
-  resolve: (accepted: boolean) => void;
 };
 
 type SpeedSample = { time: number; bytes: number };
@@ -96,7 +89,6 @@ export default function Session({ params }: Route.ComponentProps) {
   const networkTypeRef = useRef<"local" | "relay" | "unknown">("unknown");
   const configRef = useRef(loadPublicRuntimeConfig());
   const speedSamplesRef = useRef<Map<string, SpeedSample[]>>(new Map());
-  const pendingOfferResolveRef = useRef<((accepted: boolean) => void) | undefined>(undefined);
   const reservedSessionTransferBytesRef = useRef(0);
 
   const [state, dispatch] = useReducer(reduceClientSessionState, initialClientSessionState);
@@ -113,7 +105,6 @@ export default function Session({ params }: Route.ComponentProps) {
     itemId: string;
   } | null>(null);
   const [sessionSecondsLeft, setSessionSecondsLeft] = useState(0);
-  const [pendingOffer, setPendingOffer] = useState<PendingIncomingOffer | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [speedMap, setSpeedMap] = useState<Record<string, number>>({});
   const [etaMap, setEtaMap] = useState<Record<string, number>>({});
@@ -464,7 +455,7 @@ export default function Session({ params }: Route.ComponentProps) {
         return url;
       },
       events: {
-        onOffer: (offer: FileOfferMessage) => {
+        onOffer: (offer) => {
           const maxSessionBytes = configRef.current.limits.maxTotalTransferSizeBytes;
           if (reservedSessionTransferBytesRef.current + offer.totalSize > maxSessionBytes) {
             dispatch({
@@ -511,21 +502,8 @@ export default function Session({ params }: Route.ComponentProps) {
             },
             { ...getAnalyticsContext(), transferId: offer.transferId },
           );
-          // Show incoming approval dialog
-          return new Promise<boolean>((resolve) => {
-            const resolveOffer = (accepted: boolean) => {
-              if (accepted) {
-                reservedSessionTransferBytesRef.current += offer.totalSize;
-              }
-              resolve(accepted);
-            };
-            pendingOfferResolveRef.current = resolveOffer;
-            setPendingOffer({
-              fileCount: offer.files.length,
-              totalSize: offer.totalSize,
-              resolve: resolveOffer,
-            });
-          });
+          reservedSessionTransferBytesRef.current += offer.totalSize;
+          return true;
         },
         onProgress: (snapshot) => {
           trackTransferFileStarted(snapshot);
@@ -1276,18 +1254,6 @@ export default function Session({ params }: Route.ComponentProps) {
     });
   };
 
-  const approveIncoming = () => {
-    pendingOfferResolveRef.current?.(true);
-    pendingOfferResolveRef.current = undefined;
-    setPendingOffer(null);
-  };
-
-  const rejectIncoming = () => {
-    pendingOfferResolveRef.current?.(false);
-    pendingOfferResolveRef.current = undefined;
-    setPendingOffer(null);
-  };
-
   // Session timer display
   const sessionTimerLabel = formatSessionTimer(sessionSecondsLeft);
 
@@ -1329,32 +1295,6 @@ export default function Session({ params }: Route.ComponentProps) {
           }}
           onClose={() => setLightbox(null)}
         />
-      ) : null}
-
-      {/* Incoming approval overlay */}
-      {pendingOffer !== null ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm">
-          <div className="flex w-full max-w-md flex-col gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-zinc-50">
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-              Incoming files
-            </p>
-            <p className="text-base leading-snug text-zinc-200">
-              {peerLabel} wants to send:{" "}
-              <strong className="text-zinc-50">
-                {pendingOffer.fileCount} {pendingOffer.fileCount === 1 ? "file" : "files"}
-              </strong>{" "}
-              · <strong className="text-zinc-50">{formatBytes(pendingOffer.totalSize)} total</strong>
-            </p>
-            <div className="flex gap-2 pt-1">
-              <Button type="button" onClick={approveIncoming}>
-                Accept
-              </Button>
-              <Button variant="secondary" type="button" onClick={rejectIncoming}>
-                Reject
-              </Button>
-            </div>
-          </div>
-        </div>
       ) : null}
 
       <main
