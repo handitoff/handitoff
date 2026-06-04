@@ -7,7 +7,6 @@ import { Button } from "../../components/ui/button";
 import {
   getAccountData,
   isValidHandle,
-  MOCK_ACCOUNT,
   normalizeHandleInput,
   updateAccountProfile,
   type AccountUser,
@@ -27,7 +26,7 @@ export function meta() {
 // First login (spec §12): claim handle → name this device → land on Receive.
 export default function AccountWelcome() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<AccountUser>(MOCK_ACCOUNT);
+  const [user, setUser] = useState<AccountUser | undefined>();
   const [step, setStep] = useState(0);
   const [handle, setHandle] = useState("");
   const [deviceName, setDeviceName] = useState("");
@@ -68,6 +67,16 @@ export default function AccountWelcome() {
 
   const handleValid = isValidHandle(handle);
   const deviceValid = deviceName.trim().length >= 1;
+
+  if (user === undefined) {
+    return (
+      <AppShell>
+        <main className="flex flex-1 items-center justify-center px-6 py-24 text-sm text-zinc-500">
+          Loading account...
+        </main>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell user={{ name: user.name, email: user.email, avatarUrl: user.avatarUrl }}>

@@ -8,17 +8,14 @@ import { DevicesProvider } from "../../components/account/devices-context";
 import { OnlineDot } from "../../components/account/ui";
 import type { AccountContextValue } from "../../components/account/context";
 import {
-  MOCK_ACCOUNT,
-  MOCK_RECEIVE_REQUESTS,
-  MOCK_RECEIVE_SESSIONS_LIVE,
-  MOCK_RECEIVE_SETTINGS,
-  MOCK_SESSIONS,
   PLAN_ENTITLEMENTS,
   getAccountData,
   googleSignInUrl,
   receiveLinkFor,
   updateReceiveSettings,
   type AccountData,
+  type ReceiveRequest,
+  type ReceiveSettings,
 } from "../../lib/account";
 import { seoMeta } from "../../lib/seo";
 import { cn } from "../../lib/utils";
@@ -58,14 +55,13 @@ export default function AccountLayout() {
     return () => controller.abort();
   }, []);
 
-  const user = data?.user ?? MOCK_ACCOUNT;
-  const [receive, setReceiveState] = useState(MOCK_RECEIVE_SETTINGS);
-  const [requests, setRequests] = useState(MOCK_RECEIVE_REQUESTS);
+  const [receiveState, setReceiveState] = useState<ReceiveSettings | undefined>();
+  const [requestState, setRequestState] = useState<ReceiveRequest[] | undefined>();
 
   useEffect(() => {
     if (data !== undefined) {
       setReceiveState(data.receive);
-      setRequests(data.requests);
+      setRequestState(data.requests);
     }
   }, [data]);
 
@@ -105,14 +101,24 @@ export default function AccountLayout() {
     );
   }
 
-  const setReceive: typeof setReceiveState = (value) => {
+  const user = data.user;
+  const receive = receiveState ?? data.receive;
+  const requests = requestState ?? data.requests;
+
+  const setReceive: AccountContextValue["setReceive"] = (value) => {
     setReceiveState((previous) => {
-      const next = typeof value === "function" ? value(previous) : value;
+      const next = typeof value === "function" ? value(previous ?? data.receive) : value;
       void updateReceiveSettings(next)
         .then((accountData) => setData(accountData))
         .catch(() => undefined);
       return next;
     });
+  };
+
+  const setRequests: AccountContextValue["setRequests"] = (value) => {
+    setRequestState((previous) =>
+      typeof value === "function" ? value(previous ?? data.requests) : value,
+    );
   };
 
   const setUser: AccountContextValue["setUser"] = (value) => {
@@ -132,8 +138,8 @@ export default function AccountLayout() {
     setReceive,
     requests,
     setRequests,
-    liveReceive: data.liveReceive ?? MOCK_RECEIVE_SESSIONS_LIVE,
-    sessions: data.sessions ?? MOCK_SESSIONS,
+    liveReceive: data.liveReceive,
+    sessions: data.sessions,
   };
 
   const plan = PLAN_ENTITLEMENTS[user.plan];
