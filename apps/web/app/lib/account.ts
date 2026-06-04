@@ -337,7 +337,9 @@ export async function updateReceiveSettings(
   input: Partial<ReceiveSettings>,
   options: { signal?: AbortSignal } = {},
 ): Promise<AccountData> {
-  const { online: _online, ...persisted } = input;
+  const persisted = { ...input };
+  delete persisted.online;
+
   return accountRequest<AccountData>("/api/account/receive", {
     method: "PATCH",
     signal: options.signal,
