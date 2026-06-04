@@ -19,6 +19,7 @@ import {
   toPublicSession,
   type CreateSessionInput,
   type SessionStore,
+  type StoredSession,
 } from "./session-store.js";
 import type { FeedbackInput, FeedbackStoreInterface } from "./feedback-store.js";
 import {
@@ -167,6 +168,28 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
       const expiredSessions = await store.sweepExpired(now());
       for (const session of expiredSessions) {
+        if (session.ownerUserId !== undefined) {
+          await accountStore.upsertHandoffSession({
+            id: session.id,
+            ownerUserId: session.ownerUserId,
+            publicCode: session.publicCode,
+            tier: session.tier ?? "free",
+            status: "expired",
+            createdAt: new Date(session.createdAt),
+            endedAt: new Date(now()),
+            endReason: "expired",
+            participantCount: participantCount(session),
+            connectedDeviceCount: 0,
+          });
+          await accountStore.recordHandoffActivity({
+            userId: session.ownerUserId,
+            sessionId: session.id,
+            eventType: "session_expired",
+            title: "Session expired",
+            summary: "No devices connected",
+            createdAt: new Date(now()),
+          });
+        }
         options.onSessionExpired?.(session.id, session.publicCode);
       }
 
@@ -251,7 +274,10 @@ export function createApiApp(options: ApiAppOptions = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/analytics/events") {
-        return withCors(await recordAnalyticsEvent(request, requestId, analytics), request);
+        return withCors(
+          await recordAnalyticsEvent(request, requestId, analytics, accountStore),
+          request,
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/api/feedback") {
@@ -282,7 +308,10 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
       const endMatch = /^\/api\/sessions\/([^/]+)\/end$/.exec(url.pathname);
       if (request.method === "POST" && endMatch?.[1] !== undefined) {
-        return withCors(await endSession(request, requestId, endMatch[1], store), request);
+        return withCors(
+          await endSession(request, requestId, endMatch[1], store, accountStore),
+          request,
+        );
       }
 
       return withCors(errorResponse("not_found", "Route not found.", 404, requestId), request);
@@ -354,10 +383,43 @@ async function createSession(
     hostLabel: readOptionalLabel(body.hostLabel, "Host"),
     hostIpKey: ipKey,
     ttlSeconds: planConfig.limits.unpairedSessionTtlSeconds,
+    ...(accountUser === undefined ? {} : { ownerUserId: accountUser.id }),
+    tier: accountUser?.plan === "pro" ? "pro" : accountUser === undefined ? "guest" : "free",
     ...(accountUser === undefined ? {} : { limits: planConfig.limits }),
     ...(hostUserAgent === undefined ? {} : { hostUserAgent }),
   };
   const session = await store.create(createInput);
+  if (accountUser !== undefined) {
+    await accountStore.upsertHandoffSession({
+      id: session.id,
+      ownerUserId: accountUser.id,
+      publicCode: session.publicCode,
+      tier: accountUser.plan === "pro" ? "pro" : "free",
+      status: "waiting",
+      createdAt: new Date(session.createdAt),
+      pairingExpiresAt: new Date(session.expiresAt),
+      participantCount: 1,
+      connectedDeviceCount: 1,
+    });
+    await accountStore.upsertHandoffParticipant({
+      sessionId: session.id,
+      userId: accountUser.id,
+      deviceId: session.hostDeviceId,
+      deviceLabel: session.hostDevice.label,
+      role: "host",
+      status: "connected",
+      joinedAt: new Date(session.createdAt),
+      approvedAt: new Date(session.createdAt),
+    });
+    await accountStore.recordHandoffActivity({
+      userId: accountUser.id,
+      sessionId: session.id,
+      eventType: "session_created",
+      title: "Session created",
+      deviceLabel: session.hostDevice.label,
+      createdAt: new Date(session.createdAt),
+    });
+  }
 
   return json(
     {
@@ -419,6 +481,7 @@ async function endSession(
   requestId: string,
   sessionId: string,
   store: SessionStore,
+  accountStore: AccountStore,
 ): Promise<Response> {
   const body = await readJson<EndSessionBody>(request, requestId);
   if (body instanceof Response) {
@@ -448,6 +511,28 @@ async function endSession(
   );
   if (session === undefined) {
     return errorResponse("forbidden", "Device is not allowed to end this session.", 403, requestId);
+  }
+  if (session.ownerUserId !== undefined) {
+    await accountStore.upsertHandoffSession({
+      id: session.id,
+      ownerUserId: session.ownerUserId,
+      publicCode: session.publicCode,
+      tier: session.tier ?? "free",
+      status: "ended",
+      createdAt: new Date(session.createdAt),
+      endedAt: new Date(session.endedAt ?? Date.now()),
+      ...(session.endReason === undefined ? {} : { endReason: session.endReason }),
+      participantCount: participantCount(session),
+      connectedDeviceCount: 0,
+    });
+    await accountStore.recordHandoffActivity({
+      userId: session.ownerUserId,
+      sessionId: session.id,
+      eventType: "session_ended",
+      title: "Session ended",
+      ...(session.endReason === undefined ? {} : { summary: session.endReason }),
+      createdAt: new Date(session.endedAt ?? Date.now()),
+    });
   }
 
   return json(toPublicSession(session), { requestId });
@@ -597,7 +682,7 @@ async function getAuthenticatedAccount(
   if (user === undefined) {
     return errorResponse("forbidden", "Sign in is required.", 401, requestId);
   }
-  return json(accountPayload(user), { requestId });
+  return json(await accountPayload(user, accountStore), { requestId });
 }
 
 async function signOut(
@@ -679,7 +764,7 @@ async function updateAccount(
 
   try {
     const updated = await accountStore.updateAccount(user.id, input);
-    return json(accountPayload(updated), { requestId });
+    return json(await accountPayload(updated, accountStore), { requestId });
   } catch (error) {
     if (error instanceof AccountHandleTakenError) {
       return errorResponse("handle_taken", "That handle is already taken.", 409, requestId);
@@ -723,7 +808,7 @@ async function updateReceiveSettings(
   }
 
   const updated = await accountStore.updateReceiveSettings(user.id, input);
-  return json(accountPayload(updated), { requestId });
+  return json(await accountPayload(updated, accountStore), { requestId });
 }
 
 async function listAccountDevices(
@@ -840,11 +925,8 @@ async function recordAnalyticsEvent(
   request: Request,
   requestId: string,
   analytics: AnalyticsSink | undefined,
+  accountStore: AccountStore,
 ): Promise<Response> {
-  if (analytics === undefined || !analytics.isEnabled()) {
-    return json({ ok: true }, { requestId, status: 202 });
-  }
-
   const body = await readJson<AnalyticsEventBody>(request, requestId);
   if (body instanceof Response) {
     return body;
@@ -871,7 +953,10 @@ async function recordAnalyticsEvent(
       ...(body.transferId === undefined ? {} : { transferId: body.transferId }),
       properties: body.properties,
     });
-    analytics.record(event);
+    if (analytics?.isEnabled()) {
+      analytics.record(event);
+    }
+    await recordAccountTransferEvent(accountStore, event);
   } catch {
     return json({ ok: true }, { requestId, status: 202 });
   }
@@ -1081,8 +1166,10 @@ async function requireSignedInAccountUser(
   return user;
 }
 
-function accountPayload(user: AccountUser) {
+async function accountPayload(user: AccountUser, accountStore: AccountStore) {
   const receiveLinkEnabled = canUseReceiveLink(user);
+  const sessions = await accountStore.listHandoffSessions(user.id);
+  const recentActivity = await accountStore.listRecentActivity(user.id);
   return {
     user: {
       id: user.id,
@@ -1106,7 +1193,49 @@ function accountPayload(user: AccountUser) {
     },
     requests: [],
     liveReceive: [],
-    sessions: [],
+    sessions: sessions.map(sessionPayload),
+    recentActivity: recentActivity.map(activityPayload),
+  };
+}
+
+function sessionPayload(session: Awaited<ReturnType<AccountStore["listHandoffSessions"]>>[number]) {
+  return {
+    id: session.id,
+    code: session.code,
+    type: session.type,
+    tier: session.tier,
+    status: session.status,
+    fileCount: session.fileCount,
+    totalSize: session.totalSize,
+    participantCount: session.participantCount,
+    connectedDeviceCount: session.connectedDeviceCount,
+    deviceLabels: session.deviceLabels,
+    planTier: session.planTier,
+    createdAt: session.createdAt.toISOString(),
+    ...(session.endedAt === undefined ? {} : { endedAt: session.endedAt.toISOString() }),
+    ...(session.durationMs === undefined ? {} : { durationMs: session.durationMs }),
+    ...(session.success === undefined ? {} : { success: session.success }),
+    ...(session.connectionType === undefined ? {} : { connectionType: session.connectionType }),
+    ...(session.peerLabel === undefined ? {} : { peerLabel: session.peerLabel }),
+    ...(session.endReason === undefined ? {} : { endReason: session.endReason }),
+    ...(session.failureReason === undefined ? {} : { failureReason: session.failureReason }),
+  };
+}
+
+function activityPayload(session: Awaited<ReturnType<AccountStore["listRecentActivity"]>>[number]) {
+  return {
+    id: session.id,
+    sessionId: session.sessionId,
+    eventType: session.eventType,
+    title: session.title,
+    createdAt: session.createdAt.toISOString(),
+    ...(session.transferId === undefined ? {} : { transferId: session.transferId }),
+    ...(session.summary === undefined ? {} : { summary: session.summary }),
+    ...(session.fileCount === undefined ? {} : { fileCount: session.fileCount }),
+    ...(session.totalSize === undefined ? {} : { totalSize: session.totalSize }),
+    ...(session.sizeBucket === undefined ? {} : { sizeBucket: session.sizeBucket }),
+    ...(session.deviceLabel === undefined ? {} : { deviceLabel: session.deviceLabel }),
+    ...(session.peerLabel === undefined ? {} : { peerLabel: session.peerLabel }),
   };
 }
 
@@ -1125,6 +1254,10 @@ function devicePayload(device: AccountDevice, currentDeviceId: string | undefine
     createdAt: device.createdAt.toISOString(),
     updatedAt: device.updatedAt.toISOString(),
   };
+}
+
+function participantCount(session: StoredSession): number {
+  return session.guestDeviceId === undefined ? 1 : 2;
 }
 
 function canUseReceiveLink(user: AccountUser): boolean {
@@ -1272,6 +1405,133 @@ function emptyDashboard() {
     deviceTypes: [],
     recentFailedTransfers: [],
   };
+}
+
+async function recordAccountTransferEvent(
+  accountStore: AccountStore,
+  event: AnalyticsEventInput,
+): Promise<void> {
+  if (event.sessionId === undefined) {
+    return;
+  }
+  const transferStatus = transferStatusForEvent(event.eventName);
+  const ownerUserId = await accountStore.getHandoffSessionOwner(event.sessionId);
+  const properties: Record<string, unknown> =
+    typeof event.properties === "object" &&
+    event.properties !== null &&
+    !Array.isArray(event.properties)
+      ? (event.properties as Record<string, unknown>)
+      : {};
+  const transferId = event.transferId ?? `${event.sessionId}:${event.eventName}:${Date.now()}`;
+  const fileCount = readNumberProperty(properties, ["fileCount", "files", "count"]);
+  const totalSize = readNumberProperty(properties, ["totalBytes", "totalSize", "bytes"]);
+  const sizeBucket = readStringProperty(properties, ["sizeBucket"]);
+  const connectionType = readConnectionType(properties);
+  const failureReason = readStringProperty(properties, ["failureReason", "reason", "code"]);
+  const durationMs = readNumberProperty(properties, ["durationMs"]);
+
+  if (transferStatus !== undefined) {
+    await accountStore.recordTransferMetadata({
+      sessionId: event.sessionId,
+      transferId,
+      status: transferStatus,
+      ...(fileCount === undefined ? {} : { fileCount }),
+      ...(totalSize === undefined ? {} : { totalSize }),
+      ...(sizeBucket === undefined ? {} : { sizeBucket }),
+      ...(connectionType === undefined ? {} : { connectionType }),
+      ...(failureReason === undefined ? {} : { failureReason }),
+      ...(durationMs === undefined ? {} : { durationMs }),
+      occurredAt: new Date(),
+    });
+  }
+
+  if (ownerUserId !== undefined) {
+    const activity = activityForAnalyticsEvent(event.eventName);
+    if (activity !== undefined) {
+      await accountStore.recordHandoffActivity({
+        userId: ownerUserId,
+        sessionId: event.sessionId,
+        transferId,
+        eventType: event.eventName,
+        title: activity.title,
+        ...(fileCount === undefined ? {} : { fileCount }),
+        ...(totalSize === undefined ? {} : { totalSize }),
+        ...(sizeBucket === undefined ? {} : { sizeBucket }),
+        ...(activity.summary === undefined ? {} : { summary: activity.summary }),
+        createdAt: new Date(),
+      });
+    }
+  }
+}
+
+function transferStatusForEvent(
+  eventName: AnalyticsEventInput["eventName"],
+): "started" | "completed" | "failed" | "cancelled" | undefined {
+  if (eventName === "transfer_started" || eventName === "transfer_batch_started") return "started";
+  if (eventName === "transfer_completed" || eventName === "transfer_batch_completed") {
+    return "completed";
+  }
+  if (eventName === "transfer_failed" || eventName === "transfer_batch_failed") return "failed";
+  if (eventName === "transfer_cancelled" || eventName === "transfer_batch_cancelled") {
+    return "cancelled";
+  }
+  return undefined;
+}
+
+function activityForAnalyticsEvent(
+  eventName: AnalyticsEventInput["eventName"],
+): { title: string; summary?: string } | undefined {
+  switch (eventName) {
+    case "transfer_completed":
+    case "transfer_batch_completed":
+      return { title: "Transfer completed" };
+    case "transfer_failed":
+    case "transfer_batch_failed":
+      return { title: "Transfer failed" };
+    case "transfer_cancelled":
+    case "transfer_batch_cancelled":
+      return { title: "Transfer cancelled" };
+    case "session_peer_connected":
+    case "peer_connected":
+      return { title: "Peer connected" };
+    case "session_ended":
+      return { title: "Session ended" };
+    case "session_expired":
+      return { title: "Session expired" };
+    default:
+      return undefined;
+  }
+}
+
+function readNumberProperty(
+  properties: Record<string, unknown>,
+  keys: string[],
+): number | undefined {
+  for (const key of keys) {
+    const value = properties[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.max(0, Math.floor(value));
+    }
+  }
+  return undefined;
+}
+
+function readStringProperty(
+  properties: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = properties[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim().slice(0, 128);
+    }
+  }
+  return undefined;
+}
+
+function readConnectionType(properties: Record<string, unknown>): "direct" | "relay" | undefined {
+  const value = readStringProperty(properties, ["connectionType"]);
+  return value === "direct" || value === "relay" ? value : undefined;
 }
 
 function readOptionalLabel(value: unknown, fallback: string): string {

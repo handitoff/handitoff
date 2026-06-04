@@ -19,7 +19,13 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 function isActive(s: HandoffSession) {
-  return s.status === "waiting" || s.status === "connected" || s.status === "transferring";
+  return (
+    s.status === "waiting" ||
+    s.status === "connected" ||
+    s.status === "transferring" ||
+    s.status === "partially_connected" ||
+    s.status === "reconnectable"
+  );
 }
 
 export default function AccountSessions() {
@@ -40,6 +46,8 @@ export default function AccountSessions() {
   }, [sessions, filter]);
 
   const active = filtered.filter(isActive);
+  const reconnectable = filtered.filter((s) => s.status === "reconnectable");
+  const live = active.filter((s) => s.status !== "reconnectable");
   const past = filtered.filter((s) => !isActive(s));
 
   return (
@@ -78,9 +86,12 @@ export default function AccountSessions() {
         />
       ) : (
         <div className="flex flex-col gap-10">
-          {active.length > 0 && <SessionGroup title="Active now" sessions={active} />}
+          {live.length > 0 && <SessionGroup title="Active" sessions={live} />}
+          {reconnectable.length > 0 && (
+            <SessionGroup title="Reconnectable" sessions={reconnectable} />
+          )}
           {past.length > 0 && (
-            <SessionGroup title={active.length > 0 ? "Earlier" : "History"} sessions={past} />
+            <SessionGroup title={active.length > 0 ? "Recent" : "Recent"} sessions={past} />
           )}
         </div>
       )}

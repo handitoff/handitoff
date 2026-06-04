@@ -21,7 +21,12 @@ export default function AccountOverview() {
   const plan = PLAN_ENTITLEMENTS[user.plan];
   const hasReceiveLink = plan.receiveLink && user.handle !== undefined;
   const liveSessions = sessions.filter(
-    (s) => s.status === "connected" || s.status === "transferring" || s.status === "waiting",
+    (s) =>
+      s.status === "connected" ||
+      s.status === "transferring" ||
+      s.status === "waiting" ||
+      s.status === "partially_connected" ||
+      s.status === "reconnectable",
   );
   const recent = sessions.slice(0, 3);
 

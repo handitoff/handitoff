@@ -65,6 +65,9 @@ model AccountUser {
   updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions             AccountSession[]
   devices              AccountDevice[]
+  handoffSessions      HandoffSession[]
+  handoffParticipants  HandoffParticipant[]
+  handoffActivity      HandoffActivity[]
 
   @@index([handle], map: "account_users_handle_idx")
   @@map("account_users")
@@ -100,4 +103,102 @@ model AccountDevice {
   @@index([userId, removedAt], map: "account_devices_user_removed_idx")
   @@index([lastSeenAt(sort: Desc)], map: "account_devices_last_seen_at_idx")
   @@map("account_devices")
+}
+
+model HandoffSession {
+  id                   String               @id
+  ownerUserId          String?              @map("owner_user_id")
+  publicCode           String               @map("public_code")
+  type                 String               @default("standard")
+  tier                 String               @default("free")
+  status               String
+  createdAt            DateTime             @map("created_at") @db.Timestamptz(6)
+  pairingExpiresAt     DateTime?            @map("pairing_expires_at") @db.Timestamptz(6)
+  activeExpiresAt      DateTime?            @map("active_expires_at") @db.Timestamptz(6)
+  endedAt              DateTime?            @map("ended_at") @db.Timestamptz(6)
+  endReason            String?              @map("end_reason")
+  participantCount     Int                  @default(1) @map("participant_count")
+  connectedDeviceCount Int                  @default(1) @map("connected_device_count")
+  transferCount        Int                  @default(0) @map("transfer_count")
+  fileCount            Int                  @default(0) @map("file_count")
+  totalSize            BigInt               @default(0) @map("total_size")
+  connectionType       String?              @map("connection_type")
+  success              Boolean?
+  failureReason        String?              @map("failure_reason")
+  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  owner                AccountUser?         @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  participants         HandoffParticipant[]
+  transfers            HandoffTransfer[]
+  activity             HandoffActivity[]
+
+  @@index([ownerUserId, updatedAt(sort: Desc)], map: "handoff_sessions_owner_updated_idx")
+  @@index([status], map: "handoff_sessions_status_idx")
+  @@map("handoff_sessions")
+}
+
+model HandoffParticipant {
+  id             String         @id
+  sessionId      String         @map("session_id")
+  userId         String?        @map("user_id")
+  deviceId       String         @map("device_id")
+  deviceLabel    String         @map("device_label")
+  deviceType     String?        @map("device_type")
+  browser        String?
+  operatingSystem String?       @map("operating_system")
+  role           String
+  status         String
+  joinedAt       DateTime       @map("joined_at") @db.Timestamptz(6)
+  approvedAt     DateTime?      @map("approved_at") @db.Timestamptz(6)
+  disconnectedAt DateTime?      @map("disconnected_at") @db.Timestamptz(6)
+  leftAt         DateTime?      @map("left_at") @db.Timestamptz(6)
+  session        HandoffSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user           AccountUser?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, deviceId], map: "handoff_participants_session_device_key")
+  @@index([userId], map: "handoff_participants_user_id_idx")
+  @@map("handoff_participants")
+}
+
+model HandoffTransfer {
+  id                    String         @id
+  sessionId             String         @map("session_id")
+  senderParticipantId   String?        @map("sender_participant_id")
+  receiverParticipantId String?        @map("receiver_participant_id")
+  status                String
+  fileCount             Int            @default(0) @map("file_count")
+  totalSize             BigInt         @default(0) @map("total_size")
+  sizeBucket            String?        @map("size_bucket")
+  connectionType        String?        @map("connection_type")
+  startedAt             DateTime?      @map("started_at") @db.Timestamptz(6)
+  completedAt           DateTime?      @map("completed_at") @db.Timestamptz(6)
+  failedAt              DateTime?      @map("failed_at") @db.Timestamptz(6)
+  failureReason         String?        @map("failure_reason")
+  failureStage          String?        @map("failure_stage")
+  durationMs            Int?           @map("duration_ms")
+  session               HandoffSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId], map: "handoff_transfers_session_id_idx")
+  @@map("handoff_transfers")
+}
+
+model HandoffActivity {
+  id          BigInt          @id @default(autoincrement())
+  userId      String?         @map("user_id")
+  sessionId   String          @map("session_id")
+  transferId  String?         @map("transfer_id")
+  eventType   String          @map("event_type")
+  title       String
+  summary     String?
+  fileCount   Int?            @map("file_count")
+  totalSize   BigInt?         @map("total_size")
+  sizeBucket  String?         @map("size_bucket")
+  deviceLabel String?         @map("device_label")
+  peerLabel   String?         @map("peer_label")
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  user        AccountUser?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  session     HandoffSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)], map: "handoff_activity_user_created_idx")
+  @@index([sessionId], map: "handoff_activity_session_id_idx")
+  @@map("handoff_activity")
 }

@@ -97,7 +97,7 @@ export class SignalingHub {
     });
 
     socket.onMessage((raw) => void this.handleRawMessage(socket.id, raw));
-    socket.onClose(() => this.removeSocket(socket.id));
+    socket.onClose(() => void this.removeSocket(socket.id));
   }
 
   public expireSession(sessionId: string): void {
@@ -112,7 +112,7 @@ export class SignalingHub {
         now - connection.lastSeenAt > this.heartbeatTimeoutMs
       ) {
         connection.socket.close(4000, "heartbeat_timeout");
-        this.removeSocket(connection.socket.id);
+        void this.removeSocket(connection.socket.id);
       }
     }
   }
@@ -210,8 +210,16 @@ export class SignalingHub {
       hostLabel: readLabel(message.deviceLabel, "Host"),
       hostIpKey: "websocket",
       ttlSeconds: limits.unpairedSessionTtlSeconds,
+      ...(connection.accountUser === undefined ? {} : { ownerUserId: connection.accountUser.id }),
+      tier:
+        connection.accountUser?.plan === "pro"
+          ? "pro"
+          : connection.accountUser === undefined
+            ? "guest"
+            : "free",
       ...(accountLimits === undefined ? {} : { limits: accountLimits }),
     });
+    await this.recordSessionCreated(session, connection);
 
     connection.sessionId = session.id;
     connection.approved = true;
@@ -314,8 +322,11 @@ export class SignalingHub {
       hostLabel: fromDeviceLabel,
       hostIpKey: "websocket",
       ttlSeconds: limits.unpairedSessionTtlSeconds,
+      ownerUserId: connection.accountUser.id,
+      tier: connection.accountUser.plan === "pro" ? "pro" : "free",
       ...(accountLimits === undefined ? {} : { limits: accountLimits }),
     });
+    await this.recordSessionCreated(session, connection);
     const requestId = message.requestId ?? globalThis.crypto.randomUUID();
     connection.sessionId = session.id;
     connection.role = "host";
@@ -393,6 +404,7 @@ export class SignalingHub {
       this.sendError(connection, "session_not_found", "Session not found.");
       return;
     }
+    await this.recordPeerApproved(updated, connection, pending.targetDeviceId);
 
     const initiator = this.connections.get(pending.fromSocketId);
     this.pendingAccountHandoffsByRequest.delete(message.requestId);
@@ -497,7 +509,7 @@ export class SignalingHub {
       guestDeviceLabel: readLabel(message.deviceLabel, "Guest"),
       guestSocketId: connection.socket.id,
     });
-    await this.store.updateStatus(session.id, "pairing");
+    await this.store.updateStatus(session.id, "waiting");
 
     host.socket.send({
       type: "session:join-request",
@@ -524,7 +536,12 @@ export class SignalingHub {
       this.sendError(connection, "session_ended", "Session has ended.");
       return;
     }
-    if (session.status !== "connected" || session.guestDevice === undefined) {
+    if (
+      (session.status !== "connected" &&
+        session.status !== "partially_connected" &&
+        session.status !== "reconnectable") ||
+      session.guestDevice === undefined
+    ) {
       this.sendError(connection, "peer_not_approved", "Peer must be approved before signaling.");
       return;
     }
@@ -549,8 +566,33 @@ export class SignalingHub {
     connection.approved = true;
     connection.lastSeenAt = this.now();
     await this.store.heartbeat(session.id, message.deviceId);
-
+    await this.store.updateStatus(session.id, "connected");
+    await this.recordParticipantPresence(session, message.deviceId, "connected");
     const peerDevice = role === "host" ? session.guestDevice : session.hostDevice;
+    if (this.accountStore !== undefined && session.ownerUserId !== undefined) {
+      await this.accountStore.upsertHandoffSession({
+        id: session.id,
+        ownerUserId: session.ownerUserId,
+        publicCode: session.publicCode,
+        tier: session.tier ?? "free",
+        status: "connected",
+        createdAt: new Date(session.createdAt),
+        activeExpiresAt: new Date(session.expiresAt),
+        participantCount: participantCount(session),
+        connectedDeviceCount: this.connectedApprovedCount(session.id),
+      });
+      await this.accountStore.recordHandoffActivity({
+        userId: session.ownerUserId,
+        sessionId: session.id,
+        eventType: "device_reconnected",
+        title: "Device reconnected",
+        summary: `${deviceLabel} returned to the session`,
+        deviceLabel,
+        peerLabel: peerDevice.label,
+        createdAt: new Date(this.now()),
+      });
+    }
+
     connection.socket.send({
       type: "session:resumed",
       sessionId: session.id,
@@ -608,6 +650,7 @@ export class SignalingHub {
       this.sendError(connection, "session_not_found", "Session not found.");
       return;
     }
+    await this.recordPeerApproved(updated, guest, pending.guestDeviceId);
 
     this.pendingJoinsBySession.delete(message.sessionId);
     guest.approved = true;
@@ -691,7 +734,12 @@ export class SignalingHub {
       this.sendError(connection, "peer_not_approved", "Peer must be approved before signaling.");
       return;
     }
-    if (session.status !== "connected" || session.guestDeviceId === undefined) {
+    if (
+      (session.status !== "connected" &&
+        session.status !== "partially_connected" &&
+        session.status !== "reconnectable") ||
+      session.guestDeviceId === undefined
+    ) {
       this.sendError(connection, "peer_not_approved", "Peer must be approved before signaling.");
       return;
     }
@@ -744,6 +792,28 @@ export class SignalingHub {
       this.sendError(connection, "not_authorized", "Device is not allowed to end this session.");
       return;
     }
+    if (this.accountStore !== undefined && ended.ownerUserId !== undefined) {
+      await this.accountStore.upsertHandoffSession({
+        id: ended.id,
+        ownerUserId: ended.ownerUserId,
+        publicCode: ended.publicCode,
+        tier: ended.tier ?? "free",
+        status: "ended",
+        createdAt: new Date(ended.createdAt),
+        endedAt: new Date(ended.endedAt ?? this.now()),
+        ...(ended.endReason === undefined ? {} : { endReason: ended.endReason }),
+        participantCount: participantCount(ended),
+        connectedDeviceCount: 0,
+      });
+      await this.accountStore.recordHandoffActivity({
+        userId: ended.ownerUserId,
+        sessionId: ended.id,
+        eventType: "session_ended",
+        title: "Session ended",
+        ...(ended.endReason === undefined ? {} : { summary: ended.endReason }),
+        createdAt: new Date(ended.endedAt ?? this.now()),
+      });
+    }
 
     this.sendToSession(message.sessionId, { type: "session:ended" });
     this.clearSessionConnections(message.sessionId);
@@ -768,6 +838,196 @@ export class SignalingHub {
       return undefined;
     }
     return session;
+  }
+
+  private async recordSessionCreated(
+    session: StoredSession,
+    connection: ConnectionState,
+  ): Promise<void> {
+    if (this.accountStore === undefined || session.ownerUserId === undefined) {
+      return;
+    }
+    await this.accountStore.upsertHandoffSession({
+      id: session.id,
+      ownerUserId: session.ownerUserId,
+      publicCode: session.publicCode,
+      tier: session.tier ?? "free",
+      status: "waiting",
+      createdAt: new Date(session.createdAt),
+      pairingExpiresAt: new Date(session.expiresAt),
+      participantCount: 1,
+      connectedDeviceCount: 1,
+    });
+    await this.accountStore.upsertHandoffParticipant({
+      sessionId: session.id,
+      deviceId: session.hostDeviceId,
+      deviceLabel: session.hostDevice.label,
+      role: "host",
+      status: "connected",
+      joinedAt: new Date(session.createdAt),
+      approvedAt: new Date(session.createdAt),
+      ...(connection.accountUser?.id === undefined ? {} : { userId: connection.accountUser.id }),
+    });
+    await this.accountStore.recordHandoffActivity({
+      userId: session.ownerUserId,
+      sessionId: session.id,
+      eventType: "session_created",
+      title: "Session created",
+      deviceLabel: session.hostDevice.label,
+      createdAt: new Date(session.createdAt),
+    });
+  }
+
+  private async recordPeerApproved(
+    session: StoredSession,
+    guestConnection: ConnectionState,
+    guestDeviceId: string,
+  ): Promise<void> {
+    if (
+      this.accountStore === undefined ||
+      session.ownerUserId === undefined ||
+      session.guestDevice === undefined
+    ) {
+      return;
+    }
+    await this.accountStore.upsertHandoffSession({
+      id: session.id,
+      ownerUserId: session.ownerUserId,
+      publicCode: session.publicCode,
+      tier: session.tier ?? "free",
+      status: "connected",
+      createdAt: new Date(session.createdAt),
+      activeExpiresAt: new Date(session.expiresAt),
+      participantCount: 2,
+      connectedDeviceCount: 2,
+    });
+    await this.accountStore.upsertHandoffParticipant({
+      sessionId: session.id,
+      deviceId: guestDeviceId,
+      deviceLabel: session.guestDevice.label,
+      role: "guest",
+      status: "connected",
+      joinedAt: new Date(session.guestDevice.connectedAt),
+      approvedAt: new Date(session.guestDevice.connectedAt),
+      ...(guestConnection.accountUser?.id === undefined
+        ? {}
+        : { userId: guestConnection.accountUser.id }),
+    });
+    await this.accountStore.recordHandoffActivity({
+      userId: session.ownerUserId,
+      sessionId: session.id,
+      eventType: "peer_connected",
+      title: "Peer connected",
+      deviceLabel: session.guestDevice.label,
+      peerLabel: session.hostDevice.label,
+      createdAt: new Date(session.guestDevice.connectedAt),
+    });
+  }
+
+  private async recordParticipantPresence(
+    session: StoredSession,
+    deviceId: string,
+    status: "connected" | "disconnected" | "left",
+  ): Promise<void> {
+    if (this.accountStore === undefined || session.ownerUserId === undefined) {
+      return;
+    }
+    const participant =
+      deviceId === session.hostDeviceId
+        ? session.hostDevice
+        : deviceId === session.guestDeviceId
+          ? session.guestDevice
+          : undefined;
+    if (participant === undefined) {
+      return;
+    }
+    await this.accountStore.upsertHandoffParticipant({
+      sessionId: session.id,
+      deviceId,
+      deviceLabel: participant.label,
+      role: participant.role,
+      status,
+      joinedAt: new Date(participant.connectedAt),
+      approvedAt: new Date(participant.connectedAt),
+      ...(deviceId === session.hostDeviceId ? { userId: session.ownerUserId } : {}),
+      ...(status === "disconnected" ? { disconnectedAt: new Date(this.now()) } : {}),
+      ...(status === "left" ? { leftAt: new Date(this.now()) } : {}),
+    });
+  }
+
+  private async handleApprovedDisconnect(
+    connection: ConnectionState,
+    peer: ConnectionState | undefined,
+  ): Promise<void> {
+    if (connection.sessionId === undefined || connection.deviceId === undefined) {
+      return;
+    }
+    const session = await this.store.getById(connection.sessionId, { includeExpired: true });
+    if (session === undefined || session.status === "ended" || session.status === "expired") {
+      return;
+    }
+    const connectedCount = this.connectedApprovedCount(connection.sessionId);
+    if (connectedCount > 0) {
+      await this.store.updateStatus(connection.sessionId, "reconnectable");
+      await this.recordParticipantPresence(session, connection.deviceId, "disconnected");
+      if (this.accountStore !== undefined && session.ownerUserId !== undefined) {
+        await this.accountStore.upsertHandoffSession({
+          id: session.id,
+          ownerUserId: session.ownerUserId,
+          publicCode: session.publicCode,
+          tier: session.tier ?? "free",
+          status: "reconnectable",
+          createdAt: new Date(session.createdAt),
+          activeExpiresAt: new Date(session.expiresAt),
+          participantCount: participantCount(session),
+          connectedDeviceCount: connectedCount,
+        });
+        await this.accountStore.recordHandoffActivity({
+          userId: session.ownerUserId,
+          sessionId: session.id,
+          eventType: "device_disconnected",
+          title: "Device disconnected",
+          summary: `${connection.deviceLabel ?? "Device"} left the session`,
+          ...(connection.deviceLabel === undefined ? {} : { deviceLabel: connection.deviceLabel }),
+          ...(peer?.deviceLabel === undefined ? {} : { peerLabel: peer.deviceLabel }),
+          createdAt: new Date(this.now()),
+        });
+      }
+      return;
+    }
+
+    const ended = await this.store.end(
+      connection.sessionId,
+      connection.deviceId,
+      "all_devices_disconnected",
+    );
+    if (ended === undefined) {
+      return;
+    }
+    if (this.accountStore !== undefined && ended.ownerUserId !== undefined) {
+      await this.recordParticipantPresence(ended, connection.deviceId, "left");
+      await this.accountStore.upsertHandoffSession({
+        id: ended.id,
+        ownerUserId: ended.ownerUserId,
+        publicCode: ended.publicCode,
+        tier: ended.tier ?? "free",
+        status: "ended",
+        createdAt: new Date(ended.createdAt),
+        endedAt: new Date(ended.endedAt ?? this.now()),
+        endReason: "all_devices_disconnected",
+        participantCount: participantCount(ended),
+        connectedDeviceCount: 0,
+      });
+      await this.accountStore.recordHandoffActivity({
+        userId: ended.ownerUserId,
+        sessionId: ended.id,
+        eventType: "session_ended",
+        title: "Session ended",
+        summary: "All devices disconnected",
+        createdAt: new Date(ended.endedAt ?? this.now()),
+      });
+    }
+    this.clearSessionConnections(connection.sessionId);
   }
 
   private claimDevice(
@@ -815,7 +1075,7 @@ export class SignalingHub {
     return true;
   }
 
-  private removeSocket(socketId: string): void {
+  private async removeSocket(socketId: string): Promise<void> {
     const connection = this.connections.get(socketId);
     if (connection === undefined) {
       return;
@@ -830,7 +1090,7 @@ export class SignalingHub {
       const pending = this.pendingJoinsBySession.get(connection.sessionId);
       if (pending?.guestSocketId === socketId) {
         this.pendingJoinsBySession.delete(connection.sessionId);
-        void this.store.updateStatus(
+        await this.store.updateStatus(
           connection.sessionId,
           "waiting",
           this.config.publicConfig.limits.unpairedSessionTtlSeconds,
@@ -840,6 +1100,9 @@ export class SignalingHub {
       const peer = this.findPeerConnection(connection);
       if (peer !== undefined && connection.deviceId !== undefined) {
         peer.socket.send({ type: "peer:disconnected", peerDeviceId: connection.deviceId });
+      }
+      if (connection.approved && connection.deviceId !== undefined) {
+        await this.handleApprovedDisconnect(connection, peer);
       }
     }
 
@@ -880,6 +1143,16 @@ export class SignalingHub {
       }
     }
     return undefined;
+  }
+
+  private connectedApprovedCount(sessionId: string): number {
+    let count = 0;
+    for (const connection of this.connections.values()) {
+      if (connection.sessionId === sessionId && connection.approved) {
+        count += 1;
+      }
+    }
+    return count;
   }
 
   private findConnection(sessionId: string, deviceId: string): ConnectionState | undefined {
@@ -993,4 +1266,8 @@ function readLabel(value: string | undefined, fallback: string): string {
 
 function readMetadata(value: string | undefined): string | undefined {
   return value === undefined || value.trim() === "" ? undefined : value.trim().slice(0, 80);
+}
+
+function participantCount(session: StoredSession): number {
+  return session.guestDeviceId === undefined ? 1 : 2;
 }

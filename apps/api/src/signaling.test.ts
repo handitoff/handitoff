@@ -99,7 +99,7 @@ describe("signaling hub", () => {
     expect(guest.sent).toHaveLength(0);
 
     const session = await store.getById("session-1");
-    expect(session?.status).toBe("pairing");
+    expect(session?.status).toBe("waiting");
     expect(session?.guestDeviceId).toBeUndefined();
   });
 
@@ -295,40 +295,42 @@ describe("signaling hub", () => {
   });
 
   it("resumes approved sessions and announces peer presence", async () => {
-    const { hub } = createHarness();
+    const { hub, store } = createHarness();
     const { host, guest } = await createApprovedPair(hub);
     host.close();
-    guest.close();
     await flush();
 
     const resumedHost = new FakeSocket("resumed-host");
-    const resumedGuest = new FakeSocket("resumed-guest");
     hub.addSocket(resumedHost);
-    hub.addSocket(resumedGuest);
 
     resumedHost.receiveJson({ type: "session:resume", sessionId: "session-1", deviceId: "host-1" });
     await flush();
-    expect(last(resumedHost)).toMatchObject({
-      type: "session:resumed",
-      peerDeviceId: "guest-1",
-      role: "host",
-    });
-
-    resumedGuest.receiveJson({
-      type: "session:resume",
-      sessionId: "session-1",
-      deviceId: "guest-1",
-    });
-    await flush();
-    expect(resumedGuest.sent).toContainEqual(
+    expect(resumedHost.sent).toContainEqual(
       expect.objectContaining({
         type: "session:resumed",
-        peerDeviceId: "host-1",
-        role: "guest",
+        peerDeviceId: "guest-1",
+        role: "host",
       }),
     );
     expect(resumedHost.sent).toContainEqual({ type: "peer:connected", peerDeviceId: "guest-1" });
-    expect(resumedGuest.sent).toContainEqual({ type: "peer:connected", peerDeviceId: "host-1" });
+    expect(guest.sent).toContainEqual({ type: "peer:connected", peerDeviceId: "host-1" });
+    await expect(store.getById("session-1")).resolves.toMatchObject({ status: "connected" });
+  });
+
+  it("ends approved sessions automatically when every device disconnects", async () => {
+    const { hub, store } = createHarness();
+    const { host, guest } = await createApprovedPair(hub);
+
+    guest.close();
+    await flush();
+    await expect(store.getById("session-1")).resolves.toMatchObject({ status: "reconnectable" });
+
+    host.close();
+    await flush();
+    await expect(store.getById("session-1", { includeExpired: true })).resolves.toMatchObject({
+      status: "ended",
+      endReason: "all_devices_disconnected",
+    });
   });
 
   it("detects close and heartbeat timeouts", async () => {

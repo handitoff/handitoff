@@ -1,4 +1,12 @@
-export type SessionStatus = "waiting" | "pairing" | "connected" | "ended" | "expired";
+export type SessionStatus =
+  | "waiting"
+  | "connected"
+  | "transferring"
+  | "partially_connected"
+  | "reconnectable"
+  | "ended"
+  | "expired"
+  | "failed";
 
 export type DeviceRole = "host" | "guest";
 

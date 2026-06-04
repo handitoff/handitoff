@@ -12,6 +12,8 @@ export type StoredSession = Session & {
   hostDevice: Device;
   guestDevice?: Device;
   hostIpKey: string;
+  ownerUserId?: string;
+  tier?: "guest" | "free" | "pro";
   limits?: PlanLimits;
   endedAt?: number;
   endReason?: string;
@@ -27,6 +29,8 @@ export type CreateSessionInput = {
   hostLabel: string;
   hostUserAgent?: string;
   hostIpKey: string;
+  ownerUserId?: string;
+  tier?: "guest" | "free" | "pro";
   ttlSeconds: number;
   limits?: PlanLimits;
   now?: number;
@@ -99,6 +103,8 @@ export class InMemorySessionStore implements SessionStore {
       status: "waiting",
       hostDeviceId: input.hostDeviceId,
       hostIpKey: input.hostIpKey,
+      ...(input.ownerUserId === undefined ? {} : { ownerUserId: input.ownerUserId }),
+      ...(input.tier === undefined ? {} : { tier: input.tier }),
       ...(input.limits === undefined ? {} : { limits: input.limits }),
       hostDevice: {
         id: input.hostDeviceId,
@@ -338,6 +344,8 @@ export class RedisSessionStore implements SessionStore {
       status: "waiting",
       hostDeviceId: input.hostDeviceId,
       hostIpKey: input.hostIpKey,
+      ...(input.ownerUserId === undefined ? {} : { ownerUserId: input.ownerUserId }),
+      ...(input.tier === undefined ? {} : { tier: input.tier }),
       ...(input.limits === undefined ? {} : { limits: input.limits }),
       hostDevice: {
         id: input.hostDeviceId,

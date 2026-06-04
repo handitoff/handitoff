@@ -13,7 +13,13 @@ const TYPE_LABEL: Record<HandoffSession["type"], string> = {
 };
 
 function isLive(status: HandoffSession["status"]) {
-  return status === "waiting" || status === "connected" || status === "transferring";
+  return (
+    status === "waiting" ||
+    status === "connected" ||
+    status === "transferring" ||
+    status === "partially_connected" ||
+    status === "reconnectable"
+  );
 }
 
 export function SessionRow({ session }: { session: HandoffSession }) {
@@ -24,6 +30,9 @@ export function SessionRow({ session }: { session: HandoffSession }) {
     meta.push(`${session.fileCount} ${session.fileCount === 1 ? "file" : "files"}`);
   }
   if (session.totalSize > 0) meta.push(formatBytes(session.totalSize));
+  if (session.participantCount !== undefined) {
+    meta.push(`${session.connectedDeviceCount ?? 0}/${session.participantCount} devices`);
+  }
   if (session.durationMs !== undefined) meta.push(formatDuration(session.durationMs));
   if (session.connectionType !== undefined) meta.push(session.connectionType);
 

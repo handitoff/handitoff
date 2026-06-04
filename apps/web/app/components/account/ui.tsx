@@ -263,13 +263,15 @@ const STATUS_VARIANT: Record<SessionStatus, "default" | "success" | "warn" | "da
   waiting: "warn",
   connected: "info",
   transferring: "info",
+  partially_connected: "warn",
+  reconnectable: "warn",
   ended: "default",
   expired: "default",
   failed: "danger",
 };
 
 export function StatusBadge({ status }: { status: SessionStatus }) {
-  const isLive = status === "connected" || status === "transferring";
+  const isLive = status === "connected" || status === "transferring" || status === "reconnectable";
   return (
     <Badge variant={STATUS_VARIANT[status]}>
       {isLive && (

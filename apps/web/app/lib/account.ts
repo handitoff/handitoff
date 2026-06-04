@@ -50,6 +50,8 @@ export type SessionStatus =
   | "waiting"
   | "connected"
   | "transferring"
+  | "partially_connected"
+  | "reconnectable"
   | "ended"
   | "expired"
   | "failed";
@@ -73,7 +75,29 @@ export type HandoffSession = {
   success?: boolean;
   connectionType?: "direct" | "relay";
   peerLabel?: string;
+  participantCount?: number;
+  connectedDeviceCount?: number;
+  deviceLabels?: string[];
+  endedAt?: string;
+  planTier?: SessionTier;
+  endReason?: string;
+  failureReason?: string;
   /** ISO timestamp. */
+  createdAt: string;
+};
+
+export type RecentActivity = {
+  id: string;
+  sessionId: string;
+  transferId?: string;
+  eventType: string;
+  title: string;
+  summary?: string;
+  fileCount?: number;
+  totalSize?: number;
+  sizeBucket?: string;
+  deviceLabel?: string;
+  peerLabel?: string;
   createdAt: string;
 };
 
@@ -170,6 +194,7 @@ export type AccountData = {
   requests: ReceiveRequest[];
   liveReceive: ReceiveSessionLive[];
   sessions: HandoffSession[];
+  recentActivity?: RecentActivity[];
 };
 
 export async function getAccountData(options: { signal?: AbortSignal } = {}): Promise<AccountData> {
