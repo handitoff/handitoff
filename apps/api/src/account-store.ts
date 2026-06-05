@@ -512,7 +512,20 @@ export class InMemoryAccountStore implements AccountStore {
     return this.handoffActivity
       .filter((activity) => activity.userId === userId)
       .slice(0, limit)
-      .map(({ userId: _userId, ...activity }) => activity);
+      .map((activity) => ({
+        id: activity.id,
+        sessionId: activity.sessionId,
+        eventType: activity.eventType,
+        title: activity.title,
+        createdAt: activity.createdAt,
+        ...(activity.transferId === undefined ? {} : { transferId: activity.transferId }),
+        ...(activity.summary === undefined ? {} : { summary: activity.summary }),
+        ...(activity.fileCount === undefined ? {} : { fileCount: activity.fileCount }),
+        ...(activity.totalSize === undefined ? {} : { totalSize: activity.totalSize }),
+        ...(activity.sizeBucket === undefined ? {} : { sizeBucket: activity.sizeBucket }),
+        ...(activity.deviceLabel === undefined ? {} : { deviceLabel: activity.deviceLabel }),
+        ...(activity.peerLabel === undefined ? {} : { peerLabel: activity.peerLabel }),
+      }));
   }
 
   public async close(): Promise<void> {
