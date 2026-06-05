@@ -16,7 +16,7 @@ export default function Privacy() {
   return (
     <LegalPage
       label="Privacy"
-      lead="handitoff.io is built around temporary sessions. There is nothing to log in to, nothing to store, and nothing to delete when you are done."
+      lead="handitoff.io is built around temporary browser file handoff sessions. File contents stay out of our servers, and account data is limited to what is needed to sign you in and show your handoff history."
       sections={[
         {
           index: "01",
@@ -34,13 +34,23 @@ export default function Privacy() {
         },
         {
           index: "03",
+          heading: "Google sign-in data",
+          body: [
+            "If you choose to sign in with Google, handitoff.io requests the OpenID Connect scopes openid, email, and profile. Google may provide us your Google account identifier, email address, display name, and profile picture URL.",
+            "We use this Google user data only to create and secure your handitoff.io account, keep you signed in, show your account identity in the app, support account settings, receive links, device registration, plan features, and session history for handoffs where another device actually joins.",
+            "We store your Google account identifier, email address, display name, and profile picture URL in our account database so we can recognize your account on future sign-ins. We do not store your Google password, Google contacts, Google Drive files, Gmail data, calendar data, or any other Google Workspace content.",
+            "We do not sell Google user data, use it for advertising, or use it to train AI or machine learning models. We do not share Google user data with third parties except service providers that operate handitoff.io infrastructure, or when required by law.",
+          ],
+        },
+        {
+          index: "04",
           heading: "Device labels",
           body: [
             'The label shown during a session (e.g. "iPhone" or "Windows PC") is derived from your browser\'s user agent string and stored only in your browser\'s session storage. It is shared with the paired device so both sides can confirm they connected to the right thing. It is not retained after the tab closes.',
           ],
         },
         {
-          index: "04",
+          index: "05",
           heading: "Product analytics",
           body: [
             "We collect basic technical analytics to understand whether transfers connect and complete successfully. This may include an anonymous browser/device ID, browser and operating system, device type, connection type, transfer size range, transfer duration, whether a transfer succeeded or failed, and technical failure codes.",
