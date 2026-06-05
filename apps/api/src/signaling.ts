@@ -31,6 +31,7 @@ export type SignalingHubOptions = {
   rateLimiter?: FixedWindowRateLimiter;
   now?: () => number;
   heartbeatTimeoutMs?: number;
+  disconnectEndGraceMs?: number;
 };
 
 type ConnectionState = {
@@ -71,10 +72,12 @@ export class SignalingHub {
   private readonly rateLimiter: FixedWindowRateLimiter;
   private readonly now: () => number;
   private readonly heartbeatTimeoutMs: number;
+  private readonly disconnectEndGraceMs: number;
   private readonly connections = new Map<string, ConnectionState>();
   private readonly connectionIdsByDevice = new Map<string, string>();
   private readonly pendingJoinsBySession = new Map<string, PendingJoin>();
   private readonly pendingAccountHandoffsByRequest = new Map<string, PendingAccountHandoff>();
+  private readonly pendingDisconnectEnds = new Map<string, ReturnType<typeof setTimeout>>();
 
   public constructor(options: SignalingHubOptions) {
     this.config = options.config;
@@ -85,6 +88,7 @@ export class SignalingHub {
       new FixedWindowRateLimiter(options.now === undefined ? {} : { now: options.now });
     this.now = options.now ?? Date.now;
     this.heartbeatTimeoutMs = options.heartbeatTimeoutMs ?? 30_000;
+    this.disconnectEndGraceMs = options.disconnectEndGraceMs ?? 5_000;
   }
 
   public addSocket(socket: SignalingSocket): void {
@@ -593,6 +597,7 @@ export class SignalingHub {
       });
     }
 
+    this.cancelPendingDisconnectEnd(session.id);
     connection.socket.send({
       type: "session:resumed",
       sessionId: session.id,
@@ -968,6 +973,7 @@ export class SignalingHub {
     }
     const connectedCount = this.connectedApprovedCount(connection.sessionId);
     if (connectedCount > 0) {
+      this.cancelPendingDisconnectEnd(connection.sessionId);
       await this.store.updateStatus(connection.sessionId, "reconnectable");
       await this.recordParticipantPresence(session, connection.deviceId, "disconnected");
       if (this.accountStore !== undefined && session.ownerUserId !== undefined) {
@@ -996,16 +1002,46 @@ export class SignalingHub {
       return;
     }
 
-    const ended = await this.store.end(
-      connection.sessionId,
-      connection.deviceId,
-      "all_devices_disconnected",
-    );
+    await this.store.updateStatus(connection.sessionId, "reconnectable");
+    await this.recordParticipantPresence(session, connection.deviceId, "disconnected");
+    this.scheduleDisconnectEnd(session, connection.deviceId);
+  }
+
+  private scheduleDisconnectEnd(session: StoredSession, deviceId: string): void {
+    if (this.pendingDisconnectEnds.has(session.id)) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      this.pendingDisconnectEnds.delete(session.id);
+      void this.endDisconnectedSession(session, deviceId);
+    }, this.disconnectEndGraceMs);
+    timeout.unref?.();
+    this.pendingDisconnectEnds.set(session.id, timeout);
+  }
+
+  private cancelPendingDisconnectEnd(sessionId: string): void {
+    const timeout = this.pendingDisconnectEnds.get(sessionId);
+    if (timeout === undefined) {
+      return;
+    }
+    clearTimeout(timeout);
+    this.pendingDisconnectEnds.delete(sessionId);
+  }
+
+  private async endDisconnectedSession(session: StoredSession, deviceId: string): Promise<void> {
+    if (this.connectedApprovedCount(session.id) > 0) {
+      return;
+    }
+    const current = await this.store.getById(session.id, { includeExpired: true });
+    if (current === undefined || current.status === "ended" || current.status === "expired") {
+      return;
+    }
+    const ended = await this.store.end(session.id, deviceId, "all_devices_disconnected");
     if (ended === undefined) {
       return;
     }
     if (this.accountStore !== undefined && ended.ownerUserId !== undefined) {
-      await this.recordParticipantPresence(ended, connection.deviceId, "left");
+      await this.recordParticipantPresence(ended, deviceId, "left");
       await this.accountStore.upsertHandoffSession({
         id: ended.id,
         ownerUserId: ended.ownerUserId,
@@ -1027,7 +1063,7 @@ export class SignalingHub {
         createdAt: new Date(ended.endedAt ?? this.now()),
       });
     }
-    this.clearSessionConnections(connection.sessionId);
+    this.clearSessionConnections(session.id);
   }
 
   private claimDevice(

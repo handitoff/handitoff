@@ -318,7 +318,7 @@ describe("signaling hub", () => {
   });
 
   it("ends approved sessions automatically when every device disconnects", async () => {
-    const { hub, store } = createHarness();
+    const { hub, store } = createHarness({ disconnectEndGraceMs: 1 });
     const { host, guest } = await createApprovedPair(hub);
 
     guest.close();
@@ -326,10 +326,31 @@ describe("signaling hub", () => {
     await expect(store.getById("session-1")).resolves.toMatchObject({ status: "reconnectable" });
 
     host.close();
-    await flush();
+    await delay(2);
     await expect(store.getById("session-1", { includeExpired: true })).resolves.toMatchObject({
       status: "ended",
       endReason: "all_devices_disconnected",
+    });
+  });
+
+  it("keeps approved sessions alive when a device resumes during the disconnect grace window", async () => {
+    const { hub, store } = createHarness({ disconnectEndGraceMs: 20 });
+    const { host, guest } = await createApprovedPair(hub);
+
+    host.close();
+    guest.close();
+    await flush();
+    await expect(store.getById("session-1")).resolves.toMatchObject({ status: "reconnectable" });
+
+    const resumedHost = new FakeSocket("resumed-host");
+    hub.addSocket(resumedHost);
+    resumedHost.receiveJson({ type: "session:resume", sessionId: "session-1", deviceId: "host-1" });
+    await flush();
+    expect(resumedHost.sent).toContainEqual(expect.objectContaining({ type: "session:resumed" }));
+
+    await delay(25);
+    await expect(store.getById("session-1", { includeExpired: true })).resolves.toMatchObject({
+      status: "connected",
     });
   });
 
@@ -526,6 +547,7 @@ function createHarness(
     now?: () => number;
     codes?: string[];
     heartbeatTimeoutMs?: number;
+    disconnectEndGraceMs?: number;
     rateLimits?: ServerConfig["rateLimits"];
     accountStore?: AccountStore;
   } = {},
@@ -547,6 +569,9 @@ function createHarness(
     ...(options.heartbeatTimeoutMs === undefined
       ? {}
       : { heartbeatTimeoutMs: options.heartbeatTimeoutMs }),
+    ...(options.disconnectEndGraceMs === undefined
+      ? {}
+      : { disconnectEndGraceMs: options.disconnectEndGraceMs }),
   });
   return { hub, store };
 }
@@ -606,6 +631,10 @@ function last(socket: FakeSocket): ServerMessage | undefined {
 
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 class FakeSocket implements SignalingSocket {
