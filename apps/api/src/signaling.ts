@@ -223,7 +223,6 @@ export class SignalingHub {
             : "free",
       ...(accountLimits === undefined ? {} : { limits: accountLimits }),
     });
-    await this.recordSessionCreated(session, connection);
 
     connection.sessionId = session.id;
     connection.approved = true;
@@ -330,7 +329,6 @@ export class SignalingHub {
       tier: connection.accountUser.plan === "pro" ? "pro" : "free",
       ...(accountLimits === undefined ? {} : { limits: accountLimits }),
     });
-    await this.recordSessionCreated(session, connection);
     const requestId = message.requestId ?? globalThis.crypto.randomUUID();
     connection.sessionId = session.id;
     connection.role = "host";
@@ -797,7 +795,7 @@ export class SignalingHub {
       this.sendError(connection, "not_authorized", "Device is not allowed to end this session.");
       return;
     }
-    if (this.accountStore !== undefined && ended.ownerUserId !== undefined) {
+    if (this.accountStore !== undefined && ended.ownerUserId !== undefined && hasJoinedPeer(ended)) {
       await this.accountStore.upsertHandoffSession({
         id: ended.id,
         ownerUserId: ended.ownerUserId,
@@ -845,44 +843,6 @@ export class SignalingHub {
     return session;
   }
 
-  private async recordSessionCreated(
-    session: StoredSession,
-    connection: ConnectionState,
-  ): Promise<void> {
-    if (this.accountStore === undefined || session.ownerUserId === undefined) {
-      return;
-    }
-    await this.accountStore.upsertHandoffSession({
-      id: session.id,
-      ownerUserId: session.ownerUserId,
-      publicCode: session.publicCode,
-      tier: session.tier ?? "free",
-      status: "waiting",
-      createdAt: new Date(session.createdAt),
-      pairingExpiresAt: new Date(session.expiresAt),
-      participantCount: 1,
-      connectedDeviceCount: 1,
-    });
-    await this.accountStore.upsertHandoffParticipant({
-      sessionId: session.id,
-      deviceId: session.hostDeviceId,
-      deviceLabel: session.hostDevice.label,
-      role: "host",
-      status: "connected",
-      joinedAt: new Date(session.createdAt),
-      approvedAt: new Date(session.createdAt),
-      ...(connection.accountUser?.id === undefined ? {} : { userId: connection.accountUser.id }),
-    });
-    await this.accountStore.recordHandoffActivity({
-      userId: session.ownerUserId,
-      sessionId: session.id,
-      eventType: "session_created",
-      title: "Session created",
-      deviceLabel: session.hostDevice.label,
-      createdAt: new Date(session.createdAt),
-    });
-  }
-
   private async recordPeerApproved(
     session: StoredSession,
     guestConnection: ConnectionState,
@@ -905,6 +865,16 @@ export class SignalingHub {
       activeExpiresAt: new Date(session.expiresAt),
       participantCount: 2,
       connectedDeviceCount: 2,
+    });
+    await this.accountStore.upsertHandoffParticipant({
+      sessionId: session.id,
+      deviceId: session.hostDeviceId,
+      deviceLabel: session.hostDevice.label,
+      role: "host",
+      status: "connected",
+      joinedAt: new Date(session.createdAt),
+      approvedAt: new Date(session.createdAt),
+      userId: session.ownerUserId,
     });
     await this.accountStore.upsertHandoffParticipant({
       sessionId: session.id,
@@ -1003,7 +973,9 @@ export class SignalingHub {
     }
 
     await this.store.updateStatus(connection.sessionId, "reconnectable");
-    await this.recordParticipantPresence(session, connection.deviceId, "disconnected");
+    if (hasJoinedPeer(session)) {
+      await this.recordParticipantPresence(session, connection.deviceId, "disconnected");
+    }
     this.scheduleDisconnectEnd(session, connection.deviceId);
   }
 
@@ -1040,7 +1012,7 @@ export class SignalingHub {
     if (ended === undefined) {
       return;
     }
-    if (this.accountStore !== undefined && ended.ownerUserId !== undefined) {
+    if (this.accountStore !== undefined && ended.ownerUserId !== undefined && hasJoinedPeer(ended)) {
       await this.recordParticipantPresence(ended, deviceId, "left");
       await this.accountStore.upsertHandoffSession({
         id: ended.id,
@@ -1306,4 +1278,8 @@ function readMetadata(value: string | undefined): string | undefined {
 
 function participantCount(session: StoredSession): number {
   return session.guestDeviceId === undefined ? 1 : 2;
+}
+
+function hasJoinedPeer(session: StoredSession): boolean {
+  return session.guestDeviceId !== undefined;
 }

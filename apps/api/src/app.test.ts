@@ -325,6 +325,31 @@ describe("api app", () => {
     await expect(response.json()).resolves.toMatchObject({ error: { code: "plan_required" } });
   });
 
+  it("does not save signed-in QR-only sessions to account history", async () => {
+    const accountStore = new InMemoryAccountStore();
+    const user = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-1",
+      email: "one@example.com",
+      name: "One",
+    });
+    const sessionId = await accountStore.createSession(user.id, new Date(Date.now() + 60_000));
+    const cookie = signedSessionCookie(sessionId);
+    const app = createTestApp({ accountStore });
+
+    const created = await postJson(app, "/api/sessions", { hostDeviceId: "host-1" }, { cookie });
+    expect(created.status).toBe(201);
+
+    const me = await app(
+      new Request("http://localhost/api/auth/me", {
+        headers: { cookie },
+      }),
+    );
+
+    expect(me.status).toBe(200);
+    await expect(me.json()).resolves.toMatchObject({ sessions: [] });
+  });
+
   it("does not send completed account users back through welcome on Google sign-in", async () => {
     const accountStore = new InMemoryAccountStore();
     const user = await accountStore.upsertOAuthUser({

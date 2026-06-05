@@ -103,6 +103,44 @@ describe("signaling hub", () => {
     expect(session?.guestDeviceId).toBeUndefined();
   });
 
+  it("defers signed-in session history until another device joins", async () => {
+    const accountStore = new InMemoryAccountStore();
+    const user = await accountStore.upsertOAuthUser({
+      provider: "google",
+      providerSubject: "google:user-1",
+      email: "one@example.com",
+      name: "One",
+    });
+    const { hub } = createHarness({ accountStore });
+    const host = new FakeSocket("host", { id: user.id, plan: user.plan });
+    const guest = new FakeSocket("guest");
+    hub.addSocket(host);
+    hub.addSocket(guest);
+
+    host.receiveJson({ type: "session:create", deviceId: "host-1", deviceLabel: "Laptop" });
+    await flush();
+    await expect(accountStore.listHandoffSessions(user.id)).resolves.toEqual([]);
+
+    guest.receiveJson({
+      type: "session:join",
+      publicCode: "ABC234",
+      deviceId: "guest-1",
+      deviceLabel: "Phone",
+    });
+    await flush();
+    host.receiveJson({
+      type: "session:approve-peer",
+      sessionId: "session-1",
+      deviceId: "host-1",
+      peerDeviceId: "guest-1",
+    });
+    await flush();
+
+    await expect(accountStore.listHandoffSessions(user.id)).resolves.toMatchObject([
+      { id: "session-1", status: "connected", participantCount: 2 },
+    ]);
+  });
+
   it("rejects expired, full, and repeated join attempts", async () => {
     let now = 1_000;
     const { hub } = createHarness({ now: () => now, codes: ["ABC234", "DEF345"] });

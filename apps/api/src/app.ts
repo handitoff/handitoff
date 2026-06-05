@@ -168,7 +168,7 @@ export function createApiApp(options: ApiAppOptions = {}) {
 
       const expiredSessions = await store.sweepExpired(now());
       for (const session of expiredSessions) {
-        if (session.ownerUserId !== undefined) {
+        if (session.ownerUserId !== undefined && hasJoinedPeer(session)) {
           await accountStore.upsertHandoffSession({
             id: session.id,
             ownerUserId: session.ownerUserId,
@@ -389,37 +389,6 @@ async function createSession(
     ...(hostUserAgent === undefined ? {} : { hostUserAgent }),
   };
   const session = await store.create(createInput);
-  if (accountUser !== undefined) {
-    await accountStore.upsertHandoffSession({
-      id: session.id,
-      ownerUserId: accountUser.id,
-      publicCode: session.publicCode,
-      tier: accountUser.plan === "pro" ? "pro" : "free",
-      status: "waiting",
-      createdAt: new Date(session.createdAt),
-      pairingExpiresAt: new Date(session.expiresAt),
-      participantCount: 1,
-      connectedDeviceCount: 1,
-    });
-    await accountStore.upsertHandoffParticipant({
-      sessionId: session.id,
-      userId: accountUser.id,
-      deviceId: session.hostDeviceId,
-      deviceLabel: session.hostDevice.label,
-      role: "host",
-      status: "connected",
-      joinedAt: new Date(session.createdAt),
-      approvedAt: new Date(session.createdAt),
-    });
-    await accountStore.recordHandoffActivity({
-      userId: accountUser.id,
-      sessionId: session.id,
-      eventType: "session_created",
-      title: "Session created",
-      deviceLabel: session.hostDevice.label,
-      createdAt: new Date(session.createdAt),
-    });
-  }
 
   return json(
     {
@@ -512,7 +481,7 @@ async function endSession(
   if (session === undefined) {
     return errorResponse("forbidden", "Device is not allowed to end this session.", 403, requestId);
   }
-  if (session.ownerUserId !== undefined) {
+  if (session.ownerUserId !== undefined && hasJoinedPeer(session)) {
     await accountStore.upsertHandoffSession({
       id: session.id,
       ownerUserId: session.ownerUserId,
@@ -1258,6 +1227,10 @@ function devicePayload(device: AccountDevice, currentDeviceId: string | undefine
 
 function participantCount(session: StoredSession): number {
   return session.guestDeviceId === undefined ? 1 : 2;
+}
+
+function hasJoinedPeer(session: StoredSession): boolean {
+  return session.guestDeviceId !== undefined;
 }
 
 function canUseReceiveLink(user: AccountUser): boolean {
