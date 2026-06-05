@@ -795,7 +795,11 @@ export class SignalingHub {
       this.sendError(connection, "not_authorized", "Device is not allowed to end this session.");
       return;
     }
-    if (this.accountStore !== undefined && ended.ownerUserId !== undefined && hasJoinedPeer(ended)) {
+    if (
+      this.accountStore !== undefined &&
+      ended.ownerUserId !== undefined &&
+      hasJoinedPeer(ended)
+    ) {
       await this.accountStore.upsertHandoffSession({
         id: ended.id,
         ownerUserId: ended.ownerUserId,
@@ -1012,7 +1016,11 @@ export class SignalingHub {
     if (ended === undefined) {
       return;
     }
-    if (this.accountStore !== undefined && ended.ownerUserId !== undefined && hasJoinedPeer(ended)) {
+    if (
+      this.accountStore !== undefined &&
+      ended.ownerUserId !== undefined &&
+      hasJoinedPeer(ended)
+    ) {
       await this.recordParticipantPresence(ended, deviceId, "left");
       await this.accountStore.upsertHandoffSession({
         id: ended.id,
