@@ -32,6 +32,9 @@ export function SiteFooter() {
           </FooterCol>
           <FooterCol head="Other">
             <FooterLink href="mailto:hello@handitoff.io">Contact</FooterLink>
+            <FooterLink href="https://github.com/handitoff/handitoff" target="_blank" rel="noopener noreferrer">
+              GitHub
+            </FooterLink>
           </FooterCol>
         </div>
       </div>
@@ -39,6 +42,9 @@ export function SiteFooter() {
       <hr className="mx-auto my-12 h-px max-w-7xl border-0 bg-zinc-900" />
 
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+        <a href="https://www.producthunt.com/products/handitoff?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-handitoff" target="_blank" rel="noopener noreferrer">
+          <img alt="handitoff - Move files between devices directly from your browser | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1167499&amp;theme=dark&amp;t=1781077229184" />
+        </a>
         <span>© {new Date().getFullYear()} handitoff</span>
         <span>
           Made with ♡ by{" "}
@@ -69,15 +75,19 @@ function FooterLink({
   children,
   to,
   href,
+  target,
+  rel,
 }: {
   children: React.ReactNode;
   to?: string;
   href?: string;
+  target?: string;
+  rel?: string;
 }) {
   const cls = "text-sm text-zinc-300 no-underline transition-colors hover:text-zinc-50";
   if (href !== undefined) {
     return (
-      <a href={href} className={cls}>
+      <a href={href} target={target} rel={rel} className={cls}>
         {children}
       </a>
     );
